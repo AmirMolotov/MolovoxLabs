@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"math"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,6 +16,43 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestVideoSampleMultipartSaveAndReload(t *testing.T) {
+	s, state, source := samplerFixture(t)
+	meta := CreateVideoSample{BoardID: state.Library.Boards[1].ID, Name: "Trimmed moment", Video: VideoSample{SourceID: source.ID, In: 1, Out: 1.1, Crop: VideoCrop{X: .1, Y: .1, Width: .8, Height: .8}, Thumbnail: "data:image/jpeg;base64," + strings.Repeat("a", 70000)}}
+	var payload bytes.Buffer
+	form := multipart.NewWriter(&payload)
+	metadata, _ := json.Marshal(meta)
+	form.WriteField("metadata", string(metadata))
+	file, _ := form.CreateFormFile("audio", "sample.wav")
+	file.Write(samplerWavFixture(4800))
+	form.Close()
+	r := httptest.NewRequest("POST", "http://local/session/sampler/sample", &payload)
+	r.Header.Set("Origin", "http://local")
+	r.Header.Set("Content-Type", form.FormDataContentType())
+	changed := 0
+	h := (&samplerHTTP{prefix: "/session/", store: s, onLibraryChanged: func() error { changed++; return nil }}).handler(http.NotFoundHandler())
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if changed != 1 {
+		t.Fatal("Native trigger library was not refreshed")
+	}
+	saved, err := s.SamplerLibrary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	board := saved.Library.Boards[1]
+	if len(board.Sounds) != 1 || board.Sounds[0].Name != meta.Name || board.Sounds[0].Video.In != 1 {
+		t.Fatal("Sample did not persist on selected board", board)
+	}
+	pcm, err := s.Sound(board.Sounds[0].ID)
+	if err != nil || len(pcm) != 4800 {
+		t.Fatal("Saved sample is not playable", err)
+	}
+}
 
 func samplerWavFixture(frames int) []byte {
 	data := make([]byte, 44+frames*2)

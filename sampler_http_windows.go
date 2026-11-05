@@ -126,7 +126,29 @@ func (h *samplerHTTP) handler(fallback http.Handler) http.Handler {
 			return
 		}
 		if path == "sampler/sample" {
-			metaBytes, err := base64.StdEncoding.DecodeString(r.Header.Get("X-QuietLab-Sample"))
+			var metaBytes, body []byte
+			var err error
+			if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+				r.Body = http.MaxBytesReader(w, r.Body, 13*1024*1024)
+				if err = r.ParseMultipartForm(1024 * 1024); err != nil {
+					http.Error(w, "Could not read video sample", 400)
+					return
+				}
+				defer r.MultipartForm.RemoveAll()
+				metaBytes = []byte(r.FormValue("metadata"))
+				file, _, openErr := r.FormFile("audio")
+				if openErr != nil {
+					http.Error(w, "Missing sample audio", 400)
+					return
+				}
+				defer file.Close()
+				body, err = io.ReadAll(io.LimitReader(file, 12*1024*1024+1))
+			} else {
+				metaBytes, err = base64.StdEncoding.DecodeString(r.Header.Get("X-QuietLab-Sample"))
+				if err == nil {
+					body, err = io.ReadAll(http.MaxBytesReader(w, r.Body, 12*1024*1024))
+				}
+			}
 			if err != nil || len(metaBytes) > 128*1024 {
 				http.Error(w, "Invalid sample metadata", 400)
 				return
@@ -136,8 +158,7 @@ func (h *samplerHTTP) handler(fallback http.Handler) http.Handler {
 				http.Error(w, "Invalid sample metadata", 400)
 				return
 			}
-			body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 12*1024*1024))
-			if err != nil {
+			if len(body) > 12*1024*1024 {
 				http.Error(w, "Audio sample is too large", 413)
 				return
 			}
@@ -161,7 +182,11 @@ func (h *samplerHTTP) handler(fallback http.Handler) http.Handler {
 			}
 			samples, err := decodeSound(body, ".wav")
 			if err == nil {
-				err = h.engine.PlaySound("@video-preview", samples, r.Header.Get("X-Sampler-Board"))
+				id := "@video-preview"
+				if r.Header.Get("X-Preview-ID") == "@audio-preview" {
+					id = "@audio-preview"
+				}
+				err = h.engine.PlaySound(id, samples, r.Header.Get("X-Sampler-Board"))
 			}
 			if err != nil {
 				http.Error(w, err.Error(), 400)

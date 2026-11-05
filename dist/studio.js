@@ -156,7 +156,7 @@ function updatePlayback(items){
  playingSounds=new Map();
  for(const item of items){const previous=playingSounds.get(item.ID);if(!previous||item.Sequence>previous.Sequence)playingSounds.set(item.ID,item);}
  for(const [id,v] of padViews){const item=playingSounds.get(id),on=!!item,p=on?Math.max(0,Math.min(1,item.Progress)):0;v.pad.classList.toggle('is-playing',on);v.fill.style.width=(p*100)+'%';v.playIcon.textContent=on?'■':'▶';v.time.textContent=on?item.Remaining.toFixed(1)+'s left':v.sound.Seconds.toFixed(1)+'s';for(const stop of v.stops)stop.setAttribute('offset',(p*100)+'%');}
- updateSamplerPlayback(items);
+ updateSamplerPlayback(items);updateTrimPlayback(items);
 }
 $('boardSelect').onchange=async()=>{renderPads();await save();};
 let deletingBoardID=null;
