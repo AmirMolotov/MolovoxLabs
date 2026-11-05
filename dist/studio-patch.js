@@ -42,6 +42,12 @@ function patchName(node){
 function patchStatus(text){$('patchStatus').textContent=text||(!patchGraph?.Enabled?'Patch bay is off. Your standard microphone effects and dry soundboard routing are active.':patchGraph.Cables.length+' cables connected · changes apply automatically.');}
 function addPatchNode(node){if(patchGraph.Nodes.length>=32){patchStatus('Maximum 32 patch nodes. Remove an unused node first.');return;}patchGraph.Preset='';patchGraph.Nodes.push(node);commitPatch();}
 async function commitPatch(){renderPatch();await configure();}
+function cancelPatchInteraction(){
+ const move=patchDragging,hadCable=!!patchPending;patchDragging=null;patchPending=null;patchPointer=null;
+ if(move){move.node.X=move.startX;move.node.Y=move.startY;move.card.style.left=move.startX+'px';move.card.style.top=move.startY+'px';if(move.header?.hasPointerCapture(move.pointerID))move.header.releasePointerCapture(move.pointerID);renderPatch();}
+ else drawPatchCables();
+ if(move||hadCable)patchStatus(move?'Node move cancelled.':'Cable connection cancelled.');
+}
 function patchCableAllowed(from,to){
  if(from===to)return false;const a=patchGraph.Nodes.find(n=>n.ID===from),b=patchGraph.Nodes.find(n=>n.ID===to);
  if(!a||!b||a.Kind==='output'||b.Kind==='mic'||b.Kind==='board')return false;
@@ -76,7 +82,7 @@ function renderPatch(){
   const card=document.createElement('article');card.className='patch-node '+node.Kind;card.style.left=node.X+'px';card.style.top=node.Y+'px';card.dataset.patchNode=node.ID;
   const header=document.createElement('div');header.className='patch-node-header';const kind=document.createElement('span');kind.className='patch-node-kind';kind.textContent={mic:'INPUT',board:'SOUNDBOARD',effect:'EFFECT',output:'OUTPUT'}[node.Kind];
   const remove=document.createElement('button');remove.className='icon-close patch-remove';remove.setAttribute('aria-label','Remove '+patchName(node)+' from patch bay');remove.onclick=()=>{patchGraph.Preset='';patchGraph.Nodes=patchGraph.Nodes.filter(n=>n.ID!==node.ID);patchGraph.Cables=patchGraph.Cables.filter(c=>c.From!==node.ID&&c.To!==node.ID);commitPatch();};header.append(kind,remove);
-  header.onpointerdown=e=>{if(e.target.closest('button'))return;patchDragging={node,card,x:e.clientX,y:e.clientY,startX:node.X,startY:node.Y};header.setPointerCapture(e.pointerId);e.preventDefault();};
+  header.onpointerdown=e=>{if(e.button!==0||e.target.closest('button'))return;patchDragging={node,card,header,pointerID:e.pointerId,x:e.clientX,y:e.clientY,startX:node.X,startY:node.Y};header.setPointerCapture(e.pointerId);e.preventDefault();};
   const title=document.createElement('strong');title.textContent=patchName(node);card.append(header,title);
   const note=document.createElement('small');note.textContent=node.Kind==='mic'?($('monitorMic').checked?'Microphone → outputs is on':'Muted by the microphone switch'):node.Kind==='board'?'Clips + keyboard / MIDI triggers':node.Kind==='output'?'Choose devices in Settings':'Defined in your Effects library';card.append(note);
   if(node.Kind==='effect'){
@@ -85,7 +91,7 @@ function renderPatch(){
    const edit=document.createElement('button');edit.className='text-button';edit.textContent='Edit effect';edit.onclick=()=>{openTab('filters');document.querySelector(`[data-filter-id="${node.FilterID}"]`)?.scrollIntoView({behavior:'smooth',block:'center'});};row.append(enabled,edit);card.append(row);
   }
   const port=(direction)=>{const button=document.createElement('button');button.className='patch-port '+direction;button.dataset.direction=direction;button.dataset.node=node.ID;button.setAttribute('aria-label',(direction==='out'?'Connect output of ':'Connect input of ')+patchName(node));
-   if(direction==='out'){button.onpointerdown=e=>{e.preventDefault();patchPending=node.ID;patchPointer=null;drawPatchCables();};button.onclick=e=>{if(e.detail===0){patchPending=patchPending===node.ID?null:node.ID;patchPointer=null;drawPatchCables();}};}
+   if(direction==='out'){button.onpointerdown=e=>{if(e.button!==0)return;e.preventDefault();patchPending=node.ID;patchPointer=null;drawPatchCables();};button.onclick=e=>{if(e.detail===0){patchPending=patchPending===node.ID?null:node.ID;patchPointer=null;drawPatchCables();}};}
    else button.onclick=e=>{if(e.detail===0&&patchPending)connectPatch(patchPending,node.ID);};card.append(button);
   };
   if(node.Kind==='effect'||node.Kind==='output')port('in');if(node.Kind!=='output')port('out');nodes.append(card);
@@ -97,6 +103,7 @@ window.addEventListener('pointermove',e=>{
  else if(patchPending){const rect=$('patchStage').getBoundingClientRect();patchPointer={x:e.clientX-rect.left,y:e.clientY-rect.top};drawPatchCables();}
 });
 window.addEventListener('pointerup',e=>{
+ if(e.button!==0)return;
  if(patchDragging){patchDragging=null;renderPatch();scheduleSave();return;}
  if(patchPending){const port=document.elementFromPoint(e.clientX,e.clientY)?.closest('.patch-port.in');if(port)connectPatch(patchPending,port.dataset.node);}
 });
@@ -108,4 +115,5 @@ $('patchBoardPreset').onclick=()=>{patchGraph=defaultPatch('board',true);commitP
 $('patchMicPreset').onclick=()=>{patchGraph=defaultPatch('mic',true);commitPatch();};
 $('patchClear').onclick=()=>{patchGraph.Preset='';patchGraph.Cables=[];patchPending=null;commitPatch();};
 $('patchDefine').onclick=()=>openTab('filters');
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&patchPending){e.preventDefault();e.stopImmediatePropagation();patchPending=null;patchPointer=null;drawPatchCables();}},true);
+$('patchStage').oncontextmenu=e=>{e.preventDefault();e.stopPropagation();cancelPatchInteraction();};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&(patchPending||patchDragging)){e.preventDefault();e.stopImmediatePropagation();cancelPatchInteraction();}},true);

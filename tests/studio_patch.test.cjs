@@ -6,7 +6,7 @@ function harness(){
  const h={micFilters:[{ID:'reverb',Kind:'reverb'},{ID:'echo',Kind:'echo'}],library:{Boards:[]},devices:{Outputs:[]},configured:0,rendered:0,
   crypto:{randomUUID:()=>String(++id)},structuredClone,
   $:key=>{if(!controls.has(key))controls.set(key,{textContent:'',value:'',checked:true});return controls.get(key);},
-  configure:async()=>{h.configured++;},window:{addEventListener(){}},document:{addEventListener(){}},filterTitle:f=>f.Kind,
+  configure:async()=>{h.configured++;},window:{listeners:{},addEventListener(name,handler){this.listeners[name]=handler;}},document:{addEventListener(){}},filterTitle:f=>f.Kind,
  };
  vm.createContext(h);vm.runInContext(fs.readFileSync(path.join(__dirname,'../dist/studio-patch.js'),'utf8'),h);
  vm.runInContext('renderPatch=()=>{};drawPatchCables=()=>{};patchGraph=defaultPatch("mic",true)',h);
@@ -56,4 +56,19 @@ test('an explicitly custom saved layout is not mistaken for a legacy quick-start
  const h=harness();h.$('patchBoardPreset').onclick();const custom=h.patchOptions();custom.Preset='';
  h.initPatch({Options:{Patch:custom}});h.micFilters.push({ID:'chorus',Kind:'chorus'});
  const saved=h.patchOptions();assert.equal(saved.Preset,'');assert.equal(saved.Nodes.filter(n=>n.Kind==='effect').length,2);
+});
+test('right-click cancels a pending cable without changing or applying the graph',()=>{
+ const h=harness(),before=h.patchOptions();vm.runInContext('patchPending=patchGraph.Nodes[0].ID;patchPointer={x:300,y:200}',h);
+ let prevented=false;h.$('patchStage').oncontextmenu({preventDefault(){prevented=true;},stopPropagation(){}});
+ assert.equal(prevented,true);assert.equal(vm.runInContext('patchPending',h),null);assert.equal(vm.runInContext('patchPointer',h),null);
+ assert.deepEqual(h.patchOptions(),before);assert.equal(h.configured,0);
+});
+test('right-click cancels a node move and restores its previous position',()=>{
+ const h=harness(),before=h.patchOptions();vm.runInContext('patchDragging={node:patchGraph.Nodes[0],card:{style:{}},startX:40,startY:60};patchDragging.node.X=400;patchDragging.node.Y=300',h);
+ h.$('patchStage').oncontextmenu({preventDefault(){},stopPropagation(){}});
+ assert.equal(vm.runInContext('patchDragging',h),null);assert.deepEqual(h.patchOptions(),before);assert.equal(h.configured,0);
+});
+test('releasing the right mouse button cannot finish a cable or save a node move',()=>{
+ const h=harness();vm.runInContext('patchPending=patchGraph.Nodes[0].ID',h);
+ h.window.listeners.pointerup({button:2});assert.equal(h.configured,0);assert.notEqual(vm.runInContext('patchPending',h),null);
 });

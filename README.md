@@ -23,7 +23,7 @@ Use the **Patch bay** tab to connect sources, effect instances and outputs with 
 1. Define the desired effects in Effects.
 2. Select **Soundboards → effects** for a ready-to-use layout, or enable **Use patch bay routing** and add nodes yourself.
 3. Drag a right-hand output socket to a left-hand input socket. Clicking the two sockets also connects them; keyboard users can activate the sockets in sequence.
-4. Click a cable to unplug it. Drag node headers to arrange the rack. Node positions and cables are remembered automatically.
+4. Click a cable to unplug it. Right-click or press Escape to cancel an unfinished cable or node move. Drag node headers to arrange the rack. Node positions and cables are remembered automatically.
 
 Quick Start layouts stay linked to the Effects library: adding, removing or reordering effects updates the active layout automatically. Manual cable/node edits switch to a custom layout, which is preserved. Older recognizable Quick Start layouts are migrated automatically.
 
