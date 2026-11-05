@@ -16,7 +16,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-const maxVideoBytes = 200 * 1024 * 1024
+const maxVideoBytes = 8 * 1024 * 1024 * 1024
 
 type VideoCrop struct{ X, Y, Width, Height float64 }
 type VideoSample struct {
@@ -26,6 +26,7 @@ type VideoSample struct {
 	Thumbnail string
 }
 type VideoSource struct {
+	Kind           string `json:",omitempty"`
 	ID, Name, File string
 	Bytes          int64
 	RecordingID    string  `json:",omitempty"`
@@ -48,11 +49,19 @@ type CreateVideoSample struct {
 }
 
 func chooseVideoFile(owner uintptr) (string, error) {
-	description, _ := windows.UTF16FromString("Videos (*.mp4;*.webm;*.mov;*.m4v)")
-	pattern, _ := windows.UTF16FromString("*.mp4;*.webm;*.mov;*.m4v")
-	filter := append(append(description, pattern...), 0)
+	return chooseMediaFile(owner, "Import video into Quiet Lab", "*.mp4;*.webm;*.mov;*.m4v;*.mkv;*.avi;*.wmv;*.flv;*.mpeg;*.mpg;*.ts;*.mts;*.m2ts;*.mxf;*.ogv;*.3gp")
+}
+func chooseMediaFile(owner uintptr, titleText, extensions string) (string, error) {
+	description, _ := windows.UTF16FromString("Media files")
+	pattern, _ := windows.UTF16FromString(extensions)
+	filter := append(description, pattern...)
+	allDescription, _ := windows.UTF16FromString("All files")
+	allPattern, _ := windows.UTF16FromString("*.*")
+	filter = append(filter, allDescription...)
+	filter = append(filter, allPattern...)
+	filter = append(filter, 0)
 	file := make([]uint16, 32768)
-	title, _ := windows.UTF16PtrFromString("Import video into Quiet Lab")
+	title, _ := windows.UTF16PtrFromString(titleText)
 	args := openFileName{Owner: owner, Filter: &filter[0], File: &file[0], MaxFile: uint32(len(file)), Title: title, Flags: 0x1000 | 0x800 | 0x80000 | 8}
 	args.Size = uint32(unsafe.Sizeof(args))
 	ok, _, _ := windows.NewLazySystemDLL("comdlg32.dll").NewProc("GetOpenFileNameW").Call(uintptr(unsafe.Pointer(&args)))
@@ -140,10 +149,7 @@ func (s *appStore) ImportVideo(path string) (VideoSource, error) {
 	}
 	ext := strings.ToLower(filepath.Ext(path))
 	if info.IsDir() || info.Size() == 0 || info.Size() > maxVideoBytes {
-		return VideoSource{}, errors.New("Choose a video up to 200 MB")
-	}
-	if ext != ".mp4" && ext != ".webm" && ext != ".mov" && ext != ".m4v" {
-		return VideoSource{}, errors.New("Choose MP4, WebM, MOV or M4V video")
+		return VideoSource{}, errors.New("Choose a media file up to 8 GB")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -188,6 +194,16 @@ func (s *appStore) ImportVideo(path string) (VideoSource, error) {
 	return source, nil
 }
 func (s *appStore) SourcePath(id string) (string, error) {
+	raw, err := s.rawSourcePath(id)
+	if err != nil {
+		return "", err
+	}
+	if stat, e := os.Stat(s.mediaPath(id, ".mp4")); e == nil && stat.Size() > 0 {
+		return s.mediaPath(id, ".mp4"), nil
+	}
+	return raw, nil
+}
+func (s *appStore) rawSourcePath(id string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sources, err := s.videoSourcesLocked()
@@ -219,11 +235,11 @@ func validateVideoSample(v VideoSample) error {
 			return errors.New("Invalid video trim or crop")
 		}
 	}
-	if v.SourceID == "" || v.In < 0 || v.Out-v.In < .05 || v.Out-v.In > 120 {
+	if v.SourceID == "" || v.In < 0 || v.Out-v.In < .05-1e-7 || v.Out-v.In > 120+1e-7 {
 		return errors.New("Choose a sample between 0 and 120 seconds")
 	}
 	c := v.Crop
-	if c.X < 0 || c.Y < 0 || c.Width < .02 || c.Height < .02 || c.X+c.Width > 1.00001 || c.Y+c.Height > 1.00001 {
+	if c.X < 0 || c.Y < 0 || c.Width < .02-1e-7 || c.Height < .02-1e-7 || c.X+c.Width > 1.00001 || c.Y+c.Height > 1.00001 {
 		return errors.New("Crop must stay inside the video")
 	}
 	if len(v.Thumbnail) > 100000 || (v.Thumbnail != "" && !strings.HasPrefix(v.Thumbnail, "data:image/jpeg;base64,")) {

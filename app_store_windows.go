@@ -58,8 +58,9 @@ type SoundBoard struct {
 }
 type libraryState struct{ Boards []SoundBoard }
 type appStore struct {
-	mu   sync.Mutex
-	root string
+	mu      sync.Mutex
+	mediaMu sync.Mutex
+	root    string
 }
 
 func (s *appStore) read(name string, v interface{}) error {

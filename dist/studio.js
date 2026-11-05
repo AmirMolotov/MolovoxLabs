@@ -177,7 +177,6 @@ $('confirmDeleteBoard').onclick=async()=>{
 };
 
 $('createBoard').onclick=async()=>{try{library=await nativeCreateBoard($('boardName').value);$('boardName').value='';renderLibrary(library.Boards.at(-1).ID);await save();}catch(e){message(errorText(e));}};
-$('importSound').onclick=async()=>{$('importSound').disabled=true;try{library=await withLoading('Adding audio to your soundboard…',()=>nativeImportSound($('boardSelect').value),true);renderPads();$('boardStatus').textContent='Audio copied into your library.';}catch(e){message(errorText(e));}finally{$('importSound').disabled=false;}};
 $('stopSounds').onclick=async()=>{await nativeStopSounds();updatePlayback([]);$('boardStatus').textContent='All sounds stopped.';};
 $('exportBoard').onclick=async()=>{try{const path=await withLoading('Exporting soundboard and audio…',()=>nativeExportBoard($('boardSelect').value),true);if(path)$('boardStatus').textContent='Exported board, original audio files and all trigger assignments in one .qlboard package.';}catch(e){message(errorText(e));}};
 $('importBoard').onclick=async()=>{

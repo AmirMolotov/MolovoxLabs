@@ -81,6 +81,31 @@ func (h *samplerHTTP) handler(fallback http.Handler) http.Handler {
 			http.ServeFile(w, r, file)
 			return
 		}
+		if r.Method == http.MethodGet && strings.HasPrefix(path, "sampler/media-wave/") {
+			start, _ := strconv.ParseFloat(r.URL.Query().Get("start"), 64)
+			end, _ := strconv.ParseFloat(r.URL.Query().Get("end"), 64)
+			width, _ := strconv.Atoi(r.URL.Query().Get("width"))
+			peaks, err := h.store.MediaWave(strings.TrimPrefix(path, "sampler/media-wave/"), start, end, width)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(peaks)
+			return
+		}
+		if r.Method == http.MethodGet && strings.HasPrefix(path, "sampler/media-wav/") {
+			start, _ := strconv.ParseFloat(r.URL.Query().Get("start"), 64)
+			end, _ := strconv.ParseFloat(r.URL.Query().Get("end"), 64)
+			data, err := h.store.MediaWAV(strings.TrimPrefix(path, "sampler/media-wav/"), start, end, r.URL.Query().Get("silent") == "true")
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			w.Header().Set("Content-Type", "audio/wav")
+			w.Write(data)
+			return
+		}
 		if r.Method == http.MethodGet && strings.HasPrefix(path, "sampler/audio/") {
 			cursor, _ := strconv.ParseUint(r.URL.Query().Get("cursor"), 10, 64)
 			data, end, dropped, err := h.engine.samplerAudio(strings.TrimPrefix(path, "sampler/audio/"), cursor)
@@ -114,6 +139,39 @@ func (h *samplerHTTP) handler(fallback http.Handler) http.Handler {
 				return
 			}
 			library, err := h.store.CreateAudioBite(r.Header.Get("X-Bite-Board"), string(name), body)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			if h.onLibraryChanged != nil {
+				h.onLibraryChanged()
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(library)
+			return
+		}
+		if path == "sampler/create" {
+			var request struct {
+				CreateVideoSample
+				Silent bool
+			}
+			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 160*1024)).Decode(&request); err != nil {
+				http.Error(w, "Invalid video sample", 400)
+				return
+			}
+			if err := validateVideoSample(request.Video); err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			wav, err := h.store.MediaWAV(request.Video.SourceID, request.Video.In, request.Video.Out, request.Silent)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			if thumbnail, e := h.store.MediaThumbnail(request.Video); e == nil {
+				request.Video.Thumbnail = thumbnail
+			}
+			library, err := h.store.CreateVideoSample(request.CreateVideoSample, wav)
 			if err != nil {
 				http.Error(w, err.Error(), 400)
 				return

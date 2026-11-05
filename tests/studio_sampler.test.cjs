@@ -27,6 +27,13 @@ test('video sample upload carries large thumbnail metadata in multipart body',as
  const meta={BoardID:'video-board',Name:'A moment',Video:{Thumbnail:'data:image/jpeg;base64,'+'a'.repeat(70000)}};
  const result=await h.uploadVideoSample(meta,new ArrayBuffer(100));assert.equal(result.Boards[0].ID,'video-board');assert.equal(upload.headers,undefined);assert.deepEqual(JSON.parse(upload.body.get('metadata')),meta);assert.equal(upload.body.get('audio').size,100);
 });
+test('save button uses native extraction and immediately renders the returned video pad',async()=>{
+ const h=harness(),pad={ID:'pad',Name:'Edited clip',Video:{SourceID:'source',In:2,Out:4}},saved={Boards:[{ID:'video-board',Kind:'video',Sounds:[pad]}]};let payload,view,rendered;
+ h.withLoading=async(label,fn)=>fn();h.errorText=String;h.save=async()=>{};h.renderLibrary=()=>{};h.renderSamplerLibrary=id=>{rendered=id;};h.openSamplerView=name=>{view=name;};
+ h.fetch=async(url,options)=>{assert.ok(String(url).endsWith('/sampler/create'));payload=JSON.parse(options.body);return {ok:true,json:async()=>saved};};
+ vm.runInContext('samplerSource={ID:"source"};samplerDuration=100;',h);h.$('samplerBoard').value='video-board';h.$('samplerIn').value=2;h.$('samplerOut').value=4;h.$('samplerSampleName').value='Edited clip';h.$('samplerSilent').checked=false;
+ await h.$('samplerSaveSample').onclick();assert.equal(payload.Video.In,2);assert.equal(payload.Video.Out,4);assert.equal(payload.Silent,false);assert.equal(view,'pads');assert.equal(rendered,'video-board');assert.match(h.$('samplerStatus').textContent,/Added/);assert.equal(h.$('samplerSaveSample').disabled,false);
+});
 test('recording worklet streams queued PCM in order',()=>{
  let Processor;const h={AudioWorkletProcessor:class{constructor(){this.port={};}},registerProcessor(name,klass){Processor=klass;},Float32Array};vm.createContext(h);vm.runInContext(fs.readFileSync(path.join(__dirname,'../dist/sampler-audio-worklet.js'),'utf8'),h);
  const p=new Processor(),output=new Float32Array(4);p.port.onmessage({data:{type:'chunk',samples:new Float32Array([.1,.2,.3])}});p.process([],[[output]]);assert.deepEqual(Array.from(output),[0,0,0,0]);
