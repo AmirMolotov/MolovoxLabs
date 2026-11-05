@@ -34,6 +34,23 @@ test('save button uses native extraction and immediately renders the returned vi
  vm.runInContext('samplerSource={ID:"source"};samplerDuration=100;',h);h.$('samplerBoard').value='video-board';h.$('samplerIn').value=2;h.$('samplerOut').value=4;h.$('samplerSampleName').value='Edited clip';h.$('samplerSilent').checked=false;
  await h.$('samplerSaveSample').onclick();assert.equal(payload.Video.In,2);assert.equal(payload.Video.Out,4);assert.equal(payload.Silent,false);assert.equal(view,'pads');assert.equal(rendered,'video-board');assert.match(h.$('samplerStatus').textContent,/Added/);assert.equal(h.$('samplerSaveSample').disabled,false);
 });
+test('stage grids put two videos side by side and four videos in a 2 by 2 square',()=>{
+ const h=harness(),items=Array.from({length:4},(_,i)=>({ID:'video-'+i,Sequence:i+1}));
+ const pairs=tiles=>Array.from(tiles,t=>[t.X,t.Y,t.Width,t.Height]);
+ assert.deepEqual(pairs(h.samplerStageTiles(items.slice(0,2),960,540)),[[0,0,480,540],[480,0,480,540]]);
+ assert.deepEqual(pairs(h.samplerStageTiles(items,960,540)),[[0,0,480,270],[480,0,480,270],[0,270,480,270],[480,270,480,270]]);
+ assert.deepEqual(pairs(h.samplerStageTiles(items.slice(0,1),960,540)),[[0,0,960,540]]);
+ assert.deepEqual(pairs(h.samplerStageTiles([],960,540)),[]);
+});
+test('single recording stage uses only the latest video across the full frame',()=>{const h=harness(),tiles=h.samplerStageTiles([{ID:'older',Sequence:1},{ID:'newest',Sequence:3},{ID:'middle',Sequence:2}],960,540,'single');assert.equal(tiles.length,1);assert.equal(tiles[0].ID,'newest');assert.equal(tiles[0].Width,960);assert.equal(tiles[0].Height,540);});
+test('all active video crops appear in the composite captured by performance recording',()=>{
+ const h=harness();function context(){return {tx:0,ty:0,stack:[],draws:[],fillRect(){},fillText(){},save(){this.stack.push([this.tx,this.ty]);},translate(x,y){this.tx+=x;this.ty+=y;},restore(){[this.tx,this.ty]=this.stack.pop();},drawImage(source,...args){this.draws.push({source,x:this.tx,y:this.ty,args});}};}
+ const ctx=context(),frameCtx=context(),recordCtx=context(),stage=h.$('samplerStage');stage.width=960;stage.height=540;stage.getContext=()=>ctx;const frame={getContext:()=>frameCtx},record={getContext:()=>recordCtx};h.document.createElement=()=>frame;
+ h.players=Array.from({length:4},(_,i)=>['video-'+i,{video:{readyState:2,videoWidth:640,videoHeight:360},sound:{Name:'Video '+i,Video:{Crop:{X:0,Y:0,Width:i===0?.5:1,Height:1}}}}]);
+ h.record=record;vm.runInContext('samplerPlayers=new Map(players);samplerActive=players.map(([ID],index)=>({ID,Sequence:index+1}));samplerRecording={canvas:record,started:performance.now(),recorder:{state:"recording"}};',h);
+ h.drawSamplerStage();assert.equal(ctx.draws.length,4);assert.deepEqual(ctx.draws.map(d=>[d.x,d.y]),[[0,0],[480,0],[0,270],[480,270]]);assert.equal(ctx.draws[0].args[2],320);assert.equal(ctx.draws[1].args[2],640);assert.equal(h.$('samplerNowPlaying').textContent,'4 videos playing');assert.equal(frameCtx.draws[0].source,stage);assert.equal(recordCtx.draws[0].source,frame);
+ ctx.draws=[];vm.runInContext('samplerActive=samplerActive.slice(0,2)',h);h.drawSamplerStage();assert.equal(ctx.draws.length,2);assert.equal(ctx.draws[1].x,480);assert.equal(h.$('samplerNowPlaying').textContent,'2 videos playing');
+});
 test('recording worklet streams queued PCM in order',()=>{
  let Processor;const h={AudioWorkletProcessor:class{constructor(){this.port={};}},registerProcessor(name,klass){Processor=klass;},Float32Array};vm.createContext(h);vm.runInContext(fs.readFileSync(path.join(__dirname,'../dist/sampler-audio-worklet.js'),'utf8'),h);
  const p=new Processor(),output=new Float32Array(4);p.port.onmessage({data:{type:'chunk',samples:new Float32Array([.1,.2,.3])}});p.process([],[[output]]);assert.deepEqual(Array.from(output),[0,0,0,0]);

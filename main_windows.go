@@ -201,12 +201,12 @@ func main() {
 			}
 			return store.ImportVideo(path)
 		},
-		"nativeBeginSamplerRecording": func(name, output string) (string, error) {
+		"nativeBeginSamplerRecording": func(name, output, mode string) (string, error) {
 			id, err := recorder.begin(name)
 			if err != nil {
 				return "", err
 			}
-			if err = engine.beginSamplerTap(id, output); err != nil {
+			if err = engine.beginSamplerTap(id, output, mode); err != nil {
 				recorder.abort(id)
 				return "", err
 			}

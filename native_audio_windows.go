@@ -405,8 +405,8 @@ func (e *nativeEngine) render(r *renderEndpoint, output []byte, frames int, prim
 		r.toneSeen = sequence
 		r.toneLeft = 24000
 	}
-	sounds := e.voices.Load()
 	tap := e.samplerTap.Load()
+	sounds := e.voices.Load()
 	if tap != nil && tap.OutputID != r.ID {
 		tap = nil
 	}
@@ -693,7 +693,9 @@ func (e *nativeEngine) playSound(id string, samples []float32, loop bool, boardI
 	}
 	next := &boardVoices{}
 	if old := e.voices.Load(); old != nil {
-		*next = *old
+		if tap := e.samplerTap.Load(); tap == nil || tap.Mode != "single" {
+			*next = *old
+		}
 	}
 	for i, v := range next.Slots {
 		if v.Sequence == 0 || !v.Loop && time.Since(v.Started).Seconds() > float64(len(v.Samples))/sampleRate+.1 {

@@ -24,19 +24,20 @@ import (
 )
 
 type Preferences struct {
-	VSTFolders       []string
-	FilterGroups     []FilterGroup
-	AllFilterHotkeys []KeyBinding
-	AllFilterMIDIs   []MIDIBinding
-	GlobalKeys       bool
-	MIDIInput        string
-	BoardID          string
-	SamplerBoardID   string
-	Saved            bool
-	AutoListen       bool
-	Inputs           []InputSelection
-	Outputs          []string
-	Options          AudioOptions
+	VSTFolders           []string
+	FilterGroups         []FilterGroup
+	AllFilterHotkeys     []KeyBinding
+	AllFilterMIDIs       []MIDIBinding
+	GlobalKeys           bool
+	MIDIInput            string
+	BoardID              string
+	SamplerBoardID       string
+	SamplerRecordingMode string
+	Saved                bool
+	AutoListen           bool
+	Inputs               []InputSelection
+	Outputs              []string
+	Options              AudioOptions
 }
 type SoundEntry struct {
 	Video    *VideoSample `json:",omitempty"`

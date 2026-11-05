@@ -19,11 +19,19 @@ const captureRingSize = 1 << 18
 
 type samplerAudioTap struct {
 	ID, OutputID string
+	Mode         string
 	data         [captureRingSize]atomic.Uint32
 	write        atomic.Uint64
 }
 
-func (e *nativeEngine) beginSamplerTap(id, output string) error {
+func (e *nativeEngine) beginSamplerTap(id, output string, modes ...string) error {
+	mode := "layered"
+	if len(modes) > 0 && modes[0] != "" {
+		mode = modes[0]
+	}
+	if mode != "single" && mode != "layered" {
+		return errors.New("Choose Single clip or Layered recording mode")
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if !e.running.Load() {
@@ -38,7 +46,36 @@ func (e *nativeEngine) beginSamplerTap(id, output string) error {
 	if !found {
 		return errors.New("Choose an active audio output to record")
 	}
-	e.samplerTap.Store(&samplerAudioTap{ID: id, OutputID: output})
+	if mode == "single" {
+		selected := &boardVoices{}
+		chosen := -1
+		var newest uint64
+		if voices := e.voices.Load(); voices != nil {
+			for slot, voice := range voices.Slots {
+				if voice.Sequence == 0 || len(voice.Samples) == 0 {
+					continue
+				}
+				alive := voice.Loop || time.Since(voice.Started).Seconds() <= float64(len(voice.Samples))/sampleRate+.1
+				for _, endpoint := range e.renders {
+					if endpoint.ID == output {
+						published := endpoint.published[slot].Load()
+						if !voice.Loop && published>>32 == voice.Sequence && published&0xffffffff >= uint64(len(voice.Samples)) {
+							alive = false
+						}
+					}
+				}
+				if alive && voice.Sequence > newest {
+					chosen = slot
+					newest = voice.Sequence
+				}
+			}
+			if chosen >= 0 {
+				selected.Slots[chosen] = voices.Slots[chosen]
+			}
+		}
+		e.voices.Store(selected)
+	}
+	e.samplerTap.Store(&samplerAudioTap{ID: id, OutputID: output, Mode: mode})
 	return nil
 }
 func (e *nativeEngine) endSamplerTap(id string) {
