@@ -179,6 +179,7 @@ type renderEndpoint struct {
 	toneLeft  int
 }
 type nativeEngine struct {
+	soloClips      bool
 	samplerTap     atomic.Pointer[samplerAudioTap]
 	configMu       sync.Mutex
 	vst            vstRack
@@ -693,7 +694,11 @@ func (e *nativeEngine) playSound(id string, samples []float32, loop bool, boardI
 	}
 	next := &boardVoices{}
 	if old := e.voices.Load(); old != nil {
-		if tap := e.samplerTap.Load(); tap == nil || tap.Mode != "single" {
+		solo := e.soloClips
+		if tap := e.samplerTap.Load(); tap != nil {
+			solo = tap.Mode == "single"
+		}
+		if !solo {
 			*next = *old
 		}
 	}

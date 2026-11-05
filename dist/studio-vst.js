@@ -1,6 +1,6 @@
 'use strict';
 let vstCatalog=[],vstEditorID=null,vstParameters=[],vstPersistBusy=false;
-function filterTitle(filter){return filter.Kind==='vst3'?(filter.PluginName||'VST3 plugin'):filterNames[filter.Kind];}
+function filterTitle(filter){const title=filter.Kind==='vst3'?(filter.PluginName||'VST3 plugin'):filterNames[filter.Kind];return filter.ClipID?title+' · '+(library.Boards.flatMap(b=>b.Sounds).find(sound=>sound.ID===filter.ClipID)?.Name||'Pad'):title;}
 function vstFolders(){return $('vstFolders').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);}
 function showVSTCatalog(result){
  vstCatalog=result.Plugins||[];$('vstSelect').replaceChildren(new Option('Choose a VST3 effect to add…',''));

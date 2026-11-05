@@ -9,6 +9,7 @@ import (
 
 type PatchNode struct {
 	ID, Kind, FilterID, BoardID, DeviceID string
+	ClipID                                string
 	X, Y                                  float64
 }
 type PatchCable struct{ From, To string }
@@ -21,10 +22,14 @@ type PatchBay struct {
 }
 type patchStep struct {
 	kind, boardID, deviceID string
+	clipID                  string
 	filter                  int
 	inputs                  []int
 }
-type patchProgram struct{ steps []patchStep }
+type patchProgram struct {
+	steps        []patchStep
+	claimedClips map[string]bool
+}
 
 // Compile the cable graph once when settings change. Audio evaluation uses only
 // fixed scratch buffers and the existing per-filter DSP state.
@@ -51,6 +56,10 @@ func compilePatch(p PatchBay, filters []MicFilter) (*patchProgram, error) {
 		index[node.ID] = i
 		switch node.Kind {
 		case "mic", "board", "output":
+		case "clip":
+			if node.ClipID == "" || len(node.ClipID) > 128 {
+				return nil, errors.New("Choose a sound or video pad for the clip source")
+			}
 		case "effect":
 			if _, ok := effectIDs[node.FilterID]; !ok {
 				return nil, errors.New("A connected effect no longer exists")
@@ -71,7 +80,7 @@ func compilePatch(p PatchBay, filters []MicFilter) (*patchProgram, error) {
 		if !ok1 || !ok2 || from == to {
 			return nil, errors.New("Invalid cable endpoints")
 		}
-		if p.Nodes[from].Kind == "output" || p.Nodes[to].Kind == "mic" || p.Nodes[to].Kind == "board" {
+		if p.Nodes[from].Kind == "output" || p.Nodes[to].Kind == "mic" || p.Nodes[to].Kind == "board" || p.Nodes[to].Kind == "clip" {
 			return nil, errors.New("Connect source/effect outputs to effect/output inputs")
 		}
 		key := [2]int{from, to}
@@ -110,10 +119,16 @@ func compilePatch(p PatchBay, filters []MicFilter) (*patchProgram, error) {
 	for i, original := range order {
 		positions[original] = i
 	}
-	program := &patchProgram{}
+	program := &patchProgram{claimedClips: map[string]bool{}}
+	for _, cable := range p.Cables {
+		node := p.Nodes[index[cable.From]]
+		if node.Kind == "clip" {
+			program.claimedClips[node.ClipID] = true
+		}
+	}
 	for _, original := range order {
 		node := p.Nodes[original]
-		step := patchStep{kind: node.Kind, boardID: node.BoardID, deviceID: node.DeviceID, filter: effectIDs[node.FilterID]}
+		step := patchStep{kind: node.Kind, boardID: node.BoardID, deviceID: node.DeviceID, clipID: node.ClipID, filter: effectIDs[node.FilterID]}
 		for _, source := range inputs[original] {
 			step.inputs = append(step.inputs, positions[source])
 		}
@@ -137,14 +152,39 @@ func (p *patchProgram) sample(r *renderEndpoint, mic float32, sounds *boardVoice
 		case "board":
 			if sounds != nil {
 				for slot, voice := range sounds.Slots {
-					if step.boardID == "" || voice.BoardID == step.boardID {
+					if (step.boardID == "" || voice.BoardID == step.boardID) && !p.claimedClips[voice.ID] {
+						x += clips[slot] * o.BoardVolume
+					}
+				}
+			}
+		case "clip":
+			if sounds != nil {
+				for slot, voice := range sounds.Slots {
+					if voice.ID == step.clipID {
 						x += clips[slot] * o.BoardVolume
 					}
 				}
 			}
 		case "effect":
 			if !o.BypassFilters {
-				x = r.filters.sampleAt(x, o.Filters, step.filter)
+				filter := o.Filters[step.filter]
+				active := true
+				if filter.ClipID != "" && filter.Kind == "addnoise" {
+					active = false
+					if sounds != nil {
+						for slot, voice := range sounds.Slots {
+							if voice.ID == filter.ClipID && voice.Sequence != 0 && (voice.Loop || r.soundAt[slot] < len(voice.Samples)) {
+								active = true
+								break
+							}
+						}
+					}
+				}
+				if active {
+					x = r.filters.sampleAt(x, o.Filters, step.filter)
+				} else {
+					r.filters.states[step.filter].noiseGain = 0
+				}
 			}
 		case "output":
 			if step.deviceID == "" || step.deviceID == r.ID {

@@ -8,6 +8,7 @@ import (
 )
 
 type MicFilter struct {
+	ClipID       string `json:",omitempty"`
 	PluginPath   string
 	ClassID      string
 	PluginName   string
@@ -130,15 +131,18 @@ func validateFilters(filters []MicFilter) error {
 	return nil
 }
 func (c *micFilterChain) sample(input float32, filters []MicFilter) float32 {
-	return c.process(input, filters, 0, len(filters))
+	return c.process(input, filters, 0, len(filters), true)
 }
 func (c *micFilterChain) sampleAt(input float32, filters []MicFilter, index int) float32 {
-	return c.process(input, filters, index, index+1)
+	return c.process(input, filters, index, index+1, false)
 }
-func (c *micFilterChain) process(input float32, filters []MicFilter, start, end int) float32 {
+func (c *micFilterChain) process(input float32, filters []MicFilter, start, end int, microphone bool) float32 {
 	x := float64(input)
 	for i := start; i < end; i++ {
 		f := filters[i]
+		if microphone && f.ClipID != "" {
+			continue
+		}
 		s := &c.states[i]
 		if s.kind != f.Kind {
 			*s = micFilterState{kind: f.Kind}

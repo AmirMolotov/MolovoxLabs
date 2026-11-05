@@ -47,40 +47,63 @@ func (e *nativeEngine) beginSamplerTap(id, output string, modes ...string) error
 		return errors.New("Choose an active audio output to record")
 	}
 	if mode == "single" {
-		selected := &boardVoices{}
-		chosen := -1
-		var newest uint64
-		if voices := e.voices.Load(); voices != nil {
-			for slot, voice := range voices.Slots {
-				if voice.Sequence == 0 || len(voice.Samples) == 0 {
-					continue
-				}
-				alive := voice.Loop || time.Since(voice.Started).Seconds() <= float64(len(voice.Samples))/sampleRate+.1
-				for _, endpoint := range e.renders {
-					if endpoint.ID == output {
-						published := endpoint.published[slot].Load()
-						if !voice.Loop && published>>32 == voice.Sequence && published&0xffffffff >= uint64(len(voice.Samples)) {
-							alive = false
-						}
-					}
-				}
-				if alive && voice.Sequence > newest {
-					chosen = slot
-					newest = voice.Sequence
-				}
-			}
-			if chosen >= 0 {
-				selected.Slots[chosen] = voices.Slots[chosen]
-			}
-		}
-		e.voices.Store(selected)
+		e.keepLatestClipLocked(output)
 	}
 	e.samplerTap.Store(&samplerAudioTap{ID: id, OutputID: output, Mode: mode})
 	return nil
 }
+func (e *nativeEngine) keepLatestClipLocked(output string) {
+	if output == "" && len(e.renders) > 0 {
+		output = e.renders[0].ID
+	}
+	selected := &boardVoices{}
+	chosen := -1
+	var newest uint64
+	if voices := e.voices.Load(); voices != nil {
+		for slot, voice := range voices.Slots {
+			if voice.Sequence == 0 || len(voice.Samples) == 0 {
+				continue
+			}
+			alive := voice.Loop || time.Since(voice.Started).Seconds() <= float64(len(voice.Samples))/sampleRate+.1
+			for _, endpoint := range e.renders {
+				if endpoint.ID == output {
+					published := endpoint.published[slot].Load()
+					if !voice.Loop && published>>32 == voice.Sequence && published&0xffffffff >= uint64(len(voice.Samples)) {
+						alive = false
+					}
+				}
+			}
+			if alive && voice.Sequence > newest {
+				chosen = slot
+				newest = voice.Sequence
+			}
+		}
+		if chosen >= 0 {
+			selected.Slots[chosen] = voices.Slots[chosen]
+		}
+	}
+	e.voices.Store(selected)
+}
+func (e *nativeEngine) SetPlaybackMode(mode string) error {
+	if mode != "single" && mode != "layered" {
+		return errors.New("Choose Single clip or Layered playback")
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.soloClips = mode == "single"
+	tap := e.samplerTap.Load()
+	if e.soloClips && (tap == nil || tap.Mode == "single") {
+		e.keepLatestClipLocked("")
+	}
+	return nil
+}
 func (e *nativeEngine) endSamplerTap(id string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	if tap := e.samplerTap.Load(); tap != nil && tap.ID == id {
-		e.samplerTap.CompareAndSwap(tap, nil)
+		if e.samplerTap.CompareAndSwap(tap, nil) && e.soloClips {
+			e.keepLatestClipLocked("")
+		}
 	}
 }
 func (e *nativeEngine) samplerAudio(id string, cursor uint64) ([]byte, uint64, uint64, error) {

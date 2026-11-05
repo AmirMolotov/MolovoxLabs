@@ -17,6 +17,11 @@ test('soundboard preset connects effects to sounds and keeps microphone on a dry
  const board=graph.Nodes.find(n=>n.Kind==='board'),mic=graph.Nodes.find(n=>n.Kind==='mic'),out=graph.Nodes.find(n=>n.Kind==='output'),fx=graph.Nodes.filter(n=>n.Kind==='effect');
  assert.equal(graph.Enabled,true);assert.ok(graph.Cables.some(c=>c.From===board.ID&&c.To===fx[0].ID));assert.ok(graph.Cables.some(c=>c.From===fx[1].ID&&c.To===out.ID));assert.ok(graph.Cables.some(c=>c.From===mic.ID&&c.To===out.ID));assert.equal(h.configured,1);
 });
+test('a pad can create its own effect chain without changing microphone effects',()=>{
+ const h=harness();h.library.Boards=[{ID:'board',Sounds:[{ID:'clip-one',Name:'Clip one'}]}];h.filterDefaults={gain:{GainDB:6}};h.filterNames={gain:'Gain'};h.renderFilters=()=>{};h.renderGroups=()=>{};
+ vm.runInContext('patchGraph.Preset="";patchGraph.Nodes.push(patchNode("clip",{ClipID:"clip-one"},40,450));',h);const source=h.patchOptions().Nodes.find(n=>n.Kind==='clip');h.attachClipEffect(source.ID,'gain');const graph=h.patchOptions(),filter=h.micFilters.at(-1),effect=graph.Nodes.find(n=>n.FilterID===filter.ID);assert.equal(filter.ClipID,'clip-one');assert.ok(graph.Cables.some(c=>c.From===source.ID&&c.To===effect.ID));assert.ok(graph.Cables.some(c=>c.From===effect.ID&&graph.Nodes.some(n=>n.ID===c.To&&n.Kind==='output')));
+ h.$('patchMicPreset').onclick();const preset=h.patchOptions(),mic=preset.Nodes.find(n=>n.Kind==='mic'),owned=preset.Nodes.find(n=>n.FilterID===filter.ID);assert.ok(!preset.Cables.some(c=>c.From===mic.ID&&c.To===owned.ID));assert.ok(preset.Nodes.some(n=>n.Kind==='clip'&&n.ClipID==='clip-one'));
+});
 test('cable connection rejects cycles and duplicate cables without applying audio changes',()=>{
  const h=harness(),graph=h.patchOptions(),fx=graph.Nodes.filter(n=>n.Kind==='effect');
  h.connectPatch(fx[1].ID,fx[0].ID);assert.equal(h.configured,0);assert.match(h.$('patchStatus').textContent,/feedback loop/);

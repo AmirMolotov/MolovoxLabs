@@ -187,6 +187,7 @@ func main() {
 		"nativeSamplerLibrary":     store.SamplerLibrary,
 		"nativeCreateSamplerBoard": store.CreateSamplerBoard,
 		"nativePrepareMedia":       store.PrepareMedia,
+		"nativeSetPlaybackMode":    engine.SetPlaybackMode,
 		"nativeImportAudioMedia": func() (MediaInfo, error) {
 			path, err := chooseMediaFile(uintptr(window.Window()), "Add audio or video", "*.wav;*.mp3;*.flac;*.ogg;*.opus;*.aac;*.m4a;*.aiff;*.aif;*.wma;*.mp4;*.mkv;*.webm;*.mov;*.avi;*.m4v;*.mpeg;*.mpg;*.ts;*.m2ts;*.wmv;*.flv")
 			if err != nil || path == "" {

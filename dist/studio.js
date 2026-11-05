@@ -135,7 +135,7 @@ function renderPads(){
   const fill=document.createElement('div');fill.className='playback-fill';pad.append(fill);
   const top=document.createElement('div');top.className='sound-pad-top';const kind=document.createElement('span');kind.className='clip-kind';kind.textContent=(sound.File?.split('.').pop()||'audio').toUpperCase();
   const remove=document.createElement('button');remove.className='pad-remove';remove.textContent='×';remove.setAttribute('aria-label','Remove '+sound.Name);
-  remove.onclick=async()=>{try{await nativeStopSound(sound.ID);library=await nativeRemoveSound(sound.ID);renderLibrary($('boardSelect').value);$('boardStatus').textContent='Sound removed.';}catch(e){message(errorText(e));}};top.append(kind,remove);pad.append(top);
+  remove.onclick=async()=>{try{await nativeStopSound(sound.ID);library=await nativeRemoveSound(sound.ID);renderLibrary($('boardSelect').value);await configure();$('boardStatus').textContent='Sound removed.';}catch(e){message(errorText(e));}};top.append(kind,remove);pad.append(top);
   const play=document.createElement('button');play.className='sound-pad-play';play.setAttribute('aria-label','Play or stop '+sound.Name);
   const playIcon=document.createElement('span');playIcon.className='play-icon';playIcon.textContent='▶';const title=document.createElement('strong');title.textContent=sound.Name;
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 240 36');svg.classList.add('pad-wave');svg.setAttribute('aria-hidden','true');
@@ -146,7 +146,7 @@ function renderPads(){
   play.append(playIcon,title,svg);pad.append(play);
   const bottom=document.createElement('div');bottom.className='sound-pad-bottom';const edit=document.createElement('button');edit.className='pad-edit';const keys=clipKeys(sound),midis=clipMIDIs(sound);
   edit.textContent=keys.length||midis.length?'⌨ '+keys.length+' · MIDI '+midis.length:'⌨ Add triggers';edit.setAttribute('aria-label','Edit triggers for '+sound.Name);edit.onclick=()=>openTriggerEditor(sound.ID);
-  const time=document.createElement('span');time.className='clip-time';time.textContent=sound.Seconds.toFixed(1)+'s';const trim=document.createElement('button');trim.className='pad-edit pad-trim';trim.textContent='✂ Trim';trim.setAttribute('aria-label','Trim '+sound.Name);trim.onclick=()=>openAudioTrimmer(sound);bottom.append(edit,trim,time);pad.append(bottom);
+  const time=document.createElement('span');time.className='clip-time';time.textContent=sound.Seconds.toFixed(1)+'s';const trim=document.createElement('button');trim.className='pad-edit pad-trim';trim.textContent='✂ Trim';trim.setAttribute('aria-label','Trim '+sound.Name);trim.onclick=()=>openAudioTrimmer(sound);const effects=document.createElement('button');effects.className='pad-edit';effects.textContent='Effects';effects.setAttribute('aria-label','Effects for '+sound.Name);effects.onclick=()=>openClipEffects(sound.ID);bottom.append(edit,trim,effects,time);pad.append(bottom);
   play.onclick=async()=>{if(playingSounds.has(sound.ID)){await nativeStopSound(sound.ID);return;}if(!active&&!await start())return;play.disabled=true;try{await withLoading('Loading sound…',()=>nativePlaySound(sound.ID));$('boardStatus').textContent='Playing '+sound.Name+'.';}catch(e){message(errorText(e));}finally{play.disabled=false;}};
   padViews.set(sound.ID,{pad,fill,playIcon,time,stops:[stop1,stop2],sound});$('soundPads').append(pad);
  }
