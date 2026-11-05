@@ -540,6 +540,9 @@ func (e *nativeEngine) Snapshot() NativeSnapshot {
 			if published>>32 == v.Sequence {
 				position = published & 0xffffffff
 			}
+			if v.Loop && len(v.Samples) > 0 {
+				position %= uint64(len(v.Samples))
+			}
 			if position < uint64(len(v.Samples)) {
 				duration := float64(len(v.Samples)) / sampleRate
 				seconds := float64(position) / sampleRate
@@ -632,6 +635,7 @@ func nativeMutedCaptureSmoke() map[string]interface{} {
 }
 
 type boardVoice struct {
+	Loop     bool
 	BoardID  string
 	Sequence uint64
 	ID       string
@@ -657,6 +661,10 @@ func (r *renderEndpoint) boardSamples(sounds *boardVoices, clips *[8]float32) fl
 			r.soundAt[i] = 0
 		}
 		at := r.soundAt[i]
+		if v.Loop && len(v.Samples) > 0 && at >= len(v.Samples) {
+			at = 0
+			r.soundAt[i] = 0
+		}
 		if at >= len(v.Samples) {
 			continue
 		}
@@ -672,6 +680,12 @@ func (r *renderEndpoint) boardSamples(sounds *boardVoices, clips *[8]float32) fl
 	return mixed
 }
 func (e *nativeEngine) PlaySound(id string, samples []float32, boardIDs ...string) error {
+	return e.playSound(id, samples, false, boardIDs...)
+}
+func (e *nativeEngine) PlayPreview(id string, samples []float32, board string, loop bool) error {
+	return e.playSound(id, samples, loop, board)
+}
+func (e *nativeEngine) playSound(id string, samples []float32, loop bool, boardIDs ...string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if !e.running.Load() {
@@ -682,12 +696,12 @@ func (e *nativeEngine) PlaySound(id string, samples []float32, boardIDs ...strin
 		*next = *old
 	}
 	for i, v := range next.Slots {
-		if v.Sequence == 0 || time.Since(v.Started).Seconds() > float64(len(v.Samples))/sampleRate+.1 {
+		if v.Sequence == 0 || !v.Loop && time.Since(v.Started).Seconds() > float64(len(v.Samples))/sampleRate+.1 {
 			boardID := ""
 			if len(boardIDs) > 0 {
 				boardID = boardIDs[0]
 			}
-			next.Slots[i] = boardVoice{BoardID: boardID, Sequence: e.soundSequence.Add(1), ID: id, Samples: samples, Started: time.Now()}
+			next.Slots[i] = boardVoice{Loop: loop, BoardID: boardID, Sequence: e.soundSequence.Add(1), ID: id, Samples: samples, Started: time.Now()}
 			e.voices.Store(next)
 			return nil
 		}

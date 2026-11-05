@@ -244,7 +244,7 @@ func (h *samplerHTTP) handler(fallback http.Handler) http.Handler {
 				if r.Header.Get("X-Preview-ID") == "@audio-preview" {
 					id = "@audio-preview"
 				}
-				err = h.engine.PlaySound(id, samples, r.Header.Get("X-Sampler-Board"))
+				err = h.engine.PlayPreview(id, samples, r.Header.Get("X-Sampler-Board"),r.Header.Get("X-Preview-Loop")=="true")
 			}
 			if err != nil {
 				http.Error(w, err.Error(), 400)

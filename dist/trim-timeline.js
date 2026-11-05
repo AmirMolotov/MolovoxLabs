@@ -1,8 +1,8 @@
 'use strict';
 function trimBounds(duration,start,end,edge,value){const gap=Math.min(.05,duration);if(edge==='start')start=Math.max(0,Math.min(end-gap,value));else end=Math.min(duration,Math.max(start+gap,value));return {start,end};}
 class TrimTimeline {
- constructor(host,{change=()=>{},seek=()=>{},hover=null,label='Clip',video=false}={}){
-  Object.assign(this,{host,video,change,seek,hover,duration:0,start:0,end:0,zoom:1,position:0,waveVersion:0,mediaID:null});
+ constructor(host,{change=()=>{},seek=()=>{},play=null,hover=null,label='Clip',video=false}={}){
+  Object.assign(this,{host,video,change,seek,play,hover,duration:0,start:0,end:0,zoom:1,position:0,waveVersion:0,mediaID:null});
   host.className='trim-editor';host.innerHTML=`<div class="trim-heading"><span>Drag the colored edges to trim</span><output class="trim-length">Choose a source</output></div><div class="trim-scroll"><div class="trim-track"><canvas class="trim-media" width="1200" height="80"></canvas><canvas class="trim-audio" width="1200" height="80" hidden></canvas><div class="trim-shade before"></div><div class="trim-shade after"></div><div class="trim-selection"></div><button type="button" class="trim-handle start" role="slider" aria-label="${label} start" aria-valuemin="0"></button><button type="button" class="trim-handle end" role="slider" aria-label="${label} end" aria-valuemin="0"></button><div class="trim-playhead"></div></div></div><div class="trim-ruler"><output class="trim-start">0:00.0</output><span class="trim-wheel-hint">Wheel: zoom · Ctrl + wheel: move left/right${video?' · hover: frame preview':''}</span><output class="trim-end">0:00.0</output></div>`;
   host.insertAdjacentHTML('beforeend','<div class="trim-hover-preview" hidden><canvas class="trim-hover-frame" width="240" height="135"></canvas><output></output></div>');
   this.track=host.querySelector('.trim-track');this.canvas=host.querySelector('canvas');this.waveCanvas=host.querySelector('.trim-audio');this.scroll=host.querySelector('.trim-scroll');this.hoverPopup=host.querySelector('.trim-hover-preview');this.hoverPopup.hidden=true;this.hoverCanvas=host.querySelector('.trim-hover-frame');
@@ -12,10 +12,11 @@ class TrimTimeline {
    const finish=()=>{if(this.drag){this.seek(this[this.drag]);this.drag=null;}};handle.onpointerup=handle.onpointercancel=handle.onlostpointercapture=finish;
    handle.onkeydown=e=>{if(!this.duration)return;let at=this[edge];if(e.key==='ArrowLeft')at-=e.shiftKey?1:.01;else if(e.key==='ArrowRight')at+=e.shiftKey?1:.01;else if(e.key==='Home')at=0;else if(e.key==='End')at=this.duration;else return;e.preventDefault();this.setEdge(edge,at);this.seek(this[edge]);};
   }
-  this.track.onpointerdown=e=>{if(e.button!==0||e.target.closest('.trim-handle')||!this.duration)return;e.preventDefault();this.scrubbing=true;this.track.setPointerCapture(e.pointerId);this.seek(this.timeAt(e));};
-  this.track.onpointermove=e=>{if(!this.duration)return;this.previewPointer(e);if(this.scrubbing)this.seek(this.timeAt(e));else if(!this.drag&&this.hover)this.hover(this.timeAt(e));};
+  this.track.onpointerdown=e=>{if(e.button!==0||e.target.closest('.trim-handle')||!this.duration)return;e.preventDefault();this.scrubbing=true;this.scrubStartX=e.clientX;this.scrubMoved=false;this.track.setPointerCapture(e.pointerId);this.seek(this.timeAt(e));};
+  this.track.onpointermove=e=>{if(!this.duration)return;this.previewPointer(e);if(this.scrubbing){if(Math.abs(e.clientX-this.scrubStartX)>4)this.scrubMoved=true;this.seek(this.timeAt(e));}else if(!this.drag&&this.hover)this.hover(this.timeAt(e));};
   this.track.onpointerleave=()=>{this.hoverPopup.hidden=true;};
-  this.track.onpointerup=this.track.onpointercancel=this.track.onlostpointercapture=()=>{this.scrubbing=false;};
+  this.track.onpointerup=e=>{const clicked=this.scrubbing&&!this.scrubMoved;this.scrubbing=false;if(clicked&&e&&this.play)this.play(this.timeAt(e));};
+  this.track.onpointercancel=this.track.onlostpointercapture=()=>{this.scrubbing=false;};
   this.scroll.addEventListener('wheel',e=>{if(!this.duration||!e.deltaY)return;e.preventDefault();if(e.ctrlKey){this.scroll.scrollLeft=Math.max(0,this.scroll.scrollLeft+e.deltaY*2);this.drawWave();this.onViewport?.();}else this.zoomAt(e.clientX,this.zoom*Math.exp(-Math.max(-300,Math.min(300,e.deltaY))*.003));},{passive:false});
   this.scroll.addEventListener('scroll',()=>{this.drawWave();this.onViewport?.();});this.render();
  }

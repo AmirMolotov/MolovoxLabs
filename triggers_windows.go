@@ -386,6 +386,9 @@ func activeTriggerLibrary(l libraryState, p Preferences) libraryState {
 }
 
 type triggerService struct {
+	configMu       sync.Mutex
+	keyLibrary     libraryState
+	globalEnabled  bool
 	filterRevision atomic.Uint64
 	FilterChanged  func(Preferences)
 	SoundPlayed    func(string)
@@ -418,6 +421,8 @@ func newTriggerService(store *appStore, engine *nativeEngine) *triggerService {
 	return t
 }
 func (t *triggerService) Configure(p Preferences) error {
+	t.configMu.Lock()
+	defer t.configMu.Unlock()
 	l, err := t.store.Library()
 	if err != nil {
 		return err
@@ -442,7 +447,35 @@ func (t *triggerService) Configure(p Preferences) error {
 	if err = t.keys.Apply(l, p.GlobalKeys && !t.suspended.Load()); err != nil {
 		return err
 	}
-	return t.midi.Open(p.MIDIInput)
+	t.keyLibrary = l
+	t.globalEnabled = p.GlobalKeys
+	if err = t.midi.Open(p.MIDIInput); err != nil {
+		t.mu.Lock()
+		t.status.Message = "MIDI unavailable: " + err.Error()
+		t.mu.Unlock()
+	}
+	return nil
+}
+
+func (t *triggerService) SuspendShortcuts(on bool) error {
+	t.configMu.Lock()
+	defer t.configMu.Unlock()
+	if err := t.keys.Apply(t.keyLibrary, t.globalEnabled && !on); err != nil {
+		return err
+	}
+	t.suspended.Store(on)
+	return nil
+}
+func (t *triggerService) SelectMIDIInput(name string) error {
+	p, err := t.store.LoadPreferences()
+	if err != nil {
+		return err
+	}
+	if err = t.midi.Open(name); err != nil {
+		return err
+	}
+	p.MIDIInput = name
+	return t.store.SavePreferences(p)
 }
 func (t *triggerService) Play(id string) error {
 	// Decode outside audio callbacks; cache up to eight recently used sounds.
@@ -575,5 +608,16 @@ func (t *triggerService) Run(id string) error {
 	return nil
 }
 
-func (t *triggerService) Close()              { t.keys.Close(); t.midi.Close(); close(t.stop); <-t.done }
-func (t *triggerService) Learn(on bool) error { t.learn.Store(on); return nil }
+func (t *triggerService) Close() { t.keys.Close(); t.midi.Close(); close(t.stop); <-t.done }
+func (t *triggerService) Learn(on bool) error {
+	if on {
+		t.midi.mu.Lock()
+		connected := t.midi.handle != 0
+		t.midi.mu.Unlock()
+		if !connected {
+			return errors.New("Select a connected MIDI controller before learning a trigger")
+		}
+	}
+	t.learn.Store(on)
+	return nil
+}

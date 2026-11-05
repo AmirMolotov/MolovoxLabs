@@ -7,7 +7,7 @@ let micFilters=[],filterGroups=[],allFilterHotkeys=[],allFilterMIDIs=[],bypassFi
 let wantListening=false,routeApplying=false,routeDirty=false,routeTimer=null;
 let padViews=new Map(),playingSounds=new Map();
 function openTab(name){
- currentTab=name;
+ if(currentTab!==name&&typeof stopTrimLoop==='function')stopTrimLoop();currentTab=name;
  for(const tab of document.querySelectorAll('[data-tab]')){const on=tab.dataset.tab===name;tab.setAttribute('aria-selected',String(on));tab.tabIndex=on?0:-1;$(tab.getAttribute('aria-controls')).hidden=!on;}
  if(active)poll();else idle();if(name==='patch')renderPatch();if(name==='sampler')refreshSamplerRecordOutputs();
 }
@@ -135,7 +135,7 @@ function renderPads(){
   const fill=document.createElement('div');fill.className='playback-fill';pad.append(fill);
   const top=document.createElement('div');top.className='sound-pad-top';const kind=document.createElement('span');kind.className='clip-kind';kind.textContent=(sound.File?.split('.').pop()||'audio').toUpperCase();
   const remove=document.createElement('button');remove.className='pad-remove';remove.textContent='×';remove.setAttribute('aria-label','Remove '+sound.Name);
-  remove.onclick=async()=>{try{await nativeStopSound(sound.ID);library=await nativeRemoveSound(sound.ID);renderPads();}catch(e){message(errorText(e));}};top.append(kind,remove);pad.append(top);
+  remove.onclick=async()=>{try{await nativeStopSound(sound.ID);library=await nativeRemoveSound(sound.ID);renderLibrary($('boardSelect').value);$('boardStatus').textContent='Sound removed.';}catch(e){message(errorText(e));}};top.append(kind,remove);pad.append(top);
   const play=document.createElement('button');play.className='sound-pad-play';play.setAttribute('aria-label','Play or stop '+sound.Name);
   const playIcon=document.createElement('span');playIcon.className='play-icon';playIcon.textContent='▶';const title=document.createElement('strong');title.textContent=sound.Name;
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 240 36');svg.classList.add('pad-wave');svg.setAttribute('aria-hidden','true');
@@ -156,7 +156,7 @@ function updatePlayback(items){
  playingSounds=new Map();
  for(const item of items){const previous=playingSounds.get(item.ID);if(!previous||item.Sequence>previous.Sequence)playingSounds.set(item.ID,item);}
  for(const [id,v] of padViews){const item=playingSounds.get(id),on=!!item,p=on?Math.max(0,Math.min(1,item.Progress)):0;v.pad.classList.toggle('is-playing',on);v.fill.style.width=(p*100)+'%';v.playIcon.textContent=on?'■':'▶';v.time.textContent=on?item.Remaining.toFixed(1)+'s left':v.sound.Seconds.toFixed(1)+'s';for(const stop of v.stops)stop.setAttribute('offset',(p*100)+'%');}
- updateSamplerPlayback(items);updateTrimPlayback(items);
+ updateSamplerPlayback(items);updateTrimPlayback(items);updateLoopPreview(items);
 }
 $('boardSelect').onchange=async()=>{renderPads();await save();};
 let deletingBoardID=null;

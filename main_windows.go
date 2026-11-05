@@ -364,12 +364,19 @@ func main() {
 			triggers.mu.Lock()
 			delete(triggers.cache, id)
 			triggers.mu.Unlock()
-			return l, reloadTriggers()
+			engine.StopSound(id)
+			if err = reloadTriggers(); err != nil {
+				triggers.mu.Lock()
+				triggers.status.Message = "Clip removed; shortcut setup needs attention: " + err.Error()
+				triggers.mu.Unlock()
+			}
+			return l, nil
 		},
 		"nativeMIDIDevices":      midiDevices,
+		"nativeSelectMIDIInput":  triggers.SelectMIDIInput,
 		"nativeTriggerStatus":    triggers.Status,
 		"nativeLearnMIDI":        triggers.Learn,
-		"nativeSuspendShortcuts": func(on bool) error { triggers.suspended.Store(on); return reloadTriggers() },
+		"nativeSuspendShortcuts": triggers.SuspendShortcuts,
 		"nativeSetBindings": func(id string, key *KeyBinding, midi *MIDIBinding) (libraryState, error) {
 			old, err := store.Library()
 			if err != nil {

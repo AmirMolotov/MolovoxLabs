@@ -64,7 +64,7 @@ function syncFilterState(o){
  bypassFilters=!!o.BypassFilters;renderFilters();
 }
 window.addEventListener('filter-state',event=>syncFilterState(event.detail));
-let editorID=null,pendingKey=false,pendingMIDI=false,lastMIDISequence=0,lastTriggerMessage='',triggerPollBusy=false,lastFilterRevision=0,committing=false;
+let editorID=null,pendingKey=false,pendingMIDI=false,lastMIDISequence=0,lastTriggerMessage='',triggerPollBusy=false,lastFilterRevision=0,committing=false,learningEpoch=0;
 function targetData(){
  if(editorID==='@all')return {Name:'Entire filter chain',Keys:allFilterHotkeys,MIDIs:allFilterMIDIs,Description:'Toggle bypass for the whole chain. Individual filter states are preserved.'};
  if(editorID?.startsWith('@filter:')){const f=micFilters.find(f=>f.ID===editorID.slice(8));if(f)return {Name:filterTitle(f),Keys:f.Hotkeys||[],MIDIs:f.MIDIs||[],Description:'Each assigned trigger toggles this filter on or off.'};}
@@ -73,7 +73,7 @@ function targetData(){
  return null;
 }
 async function openTriggerEditor(id){
- await save();editorID=id;if(!targetData())return;renderTriggerEditor();$('triggerStatus').textContent='Assignments are saved immediately.';$('triggerDialog').showModal();
+ editorID=id;if(!targetData())return;renderTriggerEditor();$('triggerStatus').textContent='Assignments are saved immediately.';$('triggerDialog').showModal();await populateTriggerMIDI();
 }
 function renderTriggerEditor(){
  const target=targetData();if(!target)return;
@@ -88,37 +88,35 @@ function renderTriggerEditor(){
 async function commitTarget(keys,midis){
  if(committing||!editorID)return;committing=true;
  try{
-  const result=await nativeSetTriggerTarget(editorID,keys,midis);library=result.Library;preferences=result.Preferences;loadFilterModels(preferences);renderPads();renderTriggerEditor();$('triggerStatus').textContent='Saved. All assigned triggers remain active.';
+  const result=await nativeSetTriggerTarget(editorID,keys,midis);library=result.Library;preferences=result.Preferences;loadFilterModels(preferences);renderPads();renderSamplerBoard();renderTriggerEditor();$('triggerStatus').textContent='Saved. All assigned triggers remain active.';
  }catch(e){$('triggerStatus').textContent=errorText(e);}
  finally{committing=false;}
 }
-async function cancelLearning(){
- pendingKey=false;pendingMIDI=false;$('cancelLearn').hidden=true;await nativeLearnMIDI(false);await nativeSuspendShortcuts(false);
-}
-async function closeEditor(){try{await cancelLearning();}catch(e){message(errorText(e));}finally{$('triggerDialog').close();editorID=null;}}
+function showLearningButtons(){const learning=pendingKey||pendingMIDI;$('cancelLearn').hidden=!learning;$('addKey').textContent=pendingKey?'Listening for shortcut…':'＋ Add shortcut';$('addMIDI').textContent=pendingMIDI?'Listening for MIDI…':'＋ Learn MIDI';}
+async function cancelLearning(){learningEpoch++;pendingKey=false;pendingMIDI=false;showLearningButtons();const results=await Promise.allSettled([nativeLearnMIDI(false),nativeSuspendShortcuts(false)]);for(const result of results)if(result.status==='rejected')$('triggerStatus').textContent=errorText(result.reason);}
+async function closeEditor(){await cancelLearning();$('triggerDialog').close();editorID=null;}
+async function populateTriggerMIDI(){try{const devices=await nativeMIDIDevices(),select=$('triggerMIDIInput'),previous=select.value||$('midiInput').value;select.replaceChildren(new Option(devices.length?'Choose a controller…':'No MIDI controllers connected',''));for(const device of devices)select.add(new Option(device.Name,device.Name));if(devices.some(d=>d.Name===previous))select.value=previous;else if(devices.length===1)select.value=devices[0].Name;}catch(e){$('triggerStatus').textContent='Could not list MIDI controllers: '+errorText(e);}}
+$('refreshTriggerMIDI').onclick=populateTriggerMIDI;
 $('closeTriggerDialog').onclick=closeEditor;
-$('triggerDialog').addEventListener('cancel',event=>{event.preventDefault();if(pendingKey||pendingMIDI)cancelLearning().catch(e=>message(errorText(e)));else closeEditor();});
-$('cancelLearn').onclick=()=>cancelLearning().catch(e=>message(errorText(e)));
+$('triggerDialog').addEventListener('cancel',event=>{event.preventDefault();if(pendingKey||pendingMIDI)cancelLearning();else closeEditor();});
+$('cancelLearn').onclick=()=>cancelLearning();
 $('clearAllTriggers').onclick=()=>commitTarget([],[]);
-$('addKey').onclick=async()=>{
- try{await cancelLearning();await nativeSuspendShortcuts(true);pendingKey=true;$('cancelLearn').hidden=false;$('triggerStatus').textContent='Press a shortcut, for example Ctrl+Alt+1. Escape cancels.';}catch(e){$('triggerStatus').textContent=errorText(e);}
-};
-$('addMIDI').onclick=async()=>{
- try{
-  await cancelLearning();
-  if(!$('midiInput').value){await closeEditor();openTab('settings');message('Select a MIDI controller, then open this trigger editor again.');return;}
-  await nativeLearnMIDI(true);const status=await nativeTriggerStatus();lastMIDISequence=status.Sequence;pendingMIDI=true;$('cancelLearn').hidden=false;$('triggerStatus').textContent='Press the MIDI note or controller you want to add.';
- }catch(e){$('triggerStatus').textContent=errorText(e);}
-};
+$('addKey').onclick=async()=>{const epoch=++learningEpoch;pendingMIDI=false;pendingKey=false;$('triggerStatus').textContent='Preparing keyboard capture…';try{await nativeLearnMIDI(false);await nativeSuspendShortcuts(true);if(epoch!==learningEpoch){await nativeSuspendShortcuts(false);return;}pendingKey=true;showLearningButtons();$('triggerStatus').textContent='Press a shortcut, for example Ctrl+Alt+1. Escape cancels.';}catch(e){pendingKey=false;showLearningButtons();$('triggerStatus').textContent='Could not start shortcut learning: '+errorText(e);}};
+$('addMIDI').onclick=async()=>{const epoch=++learningEpoch;pendingKey=false;pendingMIDI=false;showLearningButtons();const device=$('triggerMIDIInput').value;if(!device){$('triggerStatus').textContent='Connect a MIDI controller and choose it above, then press Learn MIDI. Use Refresh controllers after connecting.';$('triggerMIDIInput').focus?.();await nativeLearnMIDI(false);await nativeSuspendShortcuts(false).catch(()=>{});return;}
+ try{$('triggerStatus').textContent='Opening MIDI controller…';await nativeLearnMIDI(false);await nativeSuspendShortcuts(true);await nativeSelectMIDIInput(device);if(epoch!==learningEpoch){await nativeSuspendShortcuts(false);return;}
+  const settings=$('midiInput');if(![...settings.options].some(option=>option.value===device))settings.add(new Option(device,device));settings.value=device;if(preferences)preferences.MIDIInput=device;
+  const status=await nativeTriggerStatus();lastMIDISequence=status.Sequence;if(epoch!==learningEpoch){await nativeSuspendShortcuts(false);return;}pendingMIDI=true;showLearningButtons();await nativeLearnMIDI(true);if(epoch!==learningEpoch){await nativeLearnMIDI(false);await nativeSuspendShortcuts(false);return;}$('triggerStatus').textContent='Press a MIDI note or controller. Escape cancels.';
+ }catch(e){pendingMIDI=false;showLearningButtons();await nativeSuspendShortcuts(false).catch(()=>{});$('triggerStatus').textContent='Could not start MIDI learning: '+errorText(e);}};
+function windowsKeyForEvent(event){if(event.keyCode>0&&event.keyCode<=255)return event.keyCode;if(/^F([1-9]|1[0-9]|2[0-4])$/.test(event.key))return 111+Number(event.key.slice(1));if(event.key.length===1&&/[a-z0-9]/i.test(event.key))return event.key.toUpperCase().charCodeAt(0);const codes={Space:32,Enter:13,Tab:9,Backspace:8,Delete:46,Insert:45,Home:36,End:35,PageUp:33,PageDown:34,ArrowLeft:37,ArrowUp:38,ArrowRight:39,ArrowDown:40};return codes[event.code]||0;}
 document.addEventListener('keydown',async event=>{
  if(!pendingKey&&!pendingMIDI)return;
  if(event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();cancelLearning().catch(e=>message(errorText(e)));return;}
  if(!pendingKey)return;event.preventDefault();event.stopImmediatePropagation();
  if(['Control','Alt','Shift','Meta'].includes(event.key))return;
- if(event.metaKey||!event.keyCode||(!event.ctrlKey&&!event.altKey&&!event.shiftKey&&!/^F\d+$/.test(event.key))){$('triggerStatus').textContent='Use Ctrl, Alt, Shift or a function key.';return;}
+ if(event.metaKey||!windowsKeyForEvent(event)||(!event.ctrlKey&&!event.altKey&&!event.shiftKey&&!/^F\d+$/.test(event.key))){$('triggerStatus').textContent='Use Ctrl, Alt, Shift or a function key.';return;}
  const parts=[];if(event.ctrlKey)parts.push('Ctrl');if(event.altKey)parts.push('Alt');if(event.shiftKey)parts.push('Shift');parts.push(event.key.length===1?event.key.toUpperCase():event.key);
- const key={Key:event.keyCode,Modifiers:(event.altKey?1:0)|(event.ctrlKey?2:0)|(event.shiftKey?4:0),Label:parts.join('+')};
- pendingKey=false;$('cancelLearn').hidden=true;
+ const key={Key:windowsKeyForEvent(event),Modifiers:(event.altKey?1:0)|(event.ctrlKey?2:0)|(event.shiftKey?4:0),Label:parts.join('+')};
+ pendingKey=false;showLearningButtons();
  try{await nativeSuspendShortcuts(false);const target=targetData();if(target)await commitTarget([...target.Keys,key],target.MIDIs);}catch(e){$('triggerStatus').textContent=errorText(e);}
 },true);
 $('exportAudio').onclick=async()=>{try{const target=targetData();if(target?.Sound){const path=await withLoading('Exporting original audio…',()=>nativeExportAudio(target.Sound.ID),true);if(path)$('triggerStatus').textContent='Original '+target.Sound.File.split('.').pop().toUpperCase()+' audio exported.';}}catch(e){$('triggerStatus').textContent=errorText(e);}};
@@ -135,7 +133,7 @@ async function pollTriggers(){
   if(status.FilterRevision!==lastFilterRevision){lastFilterRevision=status.FilterRevision;syncFilterState(status.FilterOptions);refreshVSTCards();}
   if(status.Sequence!==lastMIDISequence){
    lastMIDISequence=status.Sequence;
-   if(pendingMIDI&&status.MIDI){pendingMIDI=false;$('cancelLearn').hidden=true;try{const target=targetData();if(target)await commitTarget(target.Keys,[...target.MIDIs,status.MIDI]);}finally{await nativeLearnMIDI(false);}}
+   if(pendingMIDI&&status.MIDI){pendingMIDI=false;showLearningButtons();try{await nativeLearnMIDI(false);await nativeSuspendShortcuts(false);const target=targetData();if(target)await commitTarget(target.Keys,[...target.MIDIs,status.MIDI]);}finally{await nativeLearnMIDI(false);}}
   }
   if(status.Message&&status.Message!==lastTriggerMessage&&!pendingMIDI&&!pendingKey){lastTriggerMessage=status.Message;message(status.Message);}
  }catch(e){if(pendingMIDI){pendingMIDI=false;nativeLearnMIDI(false).catch(()=>{});$('triggerStatus').textContent=errorText(e);}}

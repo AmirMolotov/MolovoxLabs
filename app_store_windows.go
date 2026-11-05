@@ -347,14 +347,23 @@ func (s *appStore) RemoveSound(id string) (libraryState, error) {
 				if err = s.write("soundboards.json", l); err != nil {
 					return l, err
 				}
-				if filepath.Base(sound.File) == sound.File {
+				shared := false
+				for _, board := range l.Boards {
+					for _, other := range board.Sounds {
+						if strings.EqualFold(other.File, sound.File) {
+							shared = true
+						}
+					}
+				}
+				if !shared && sound.File != "" && sound.File != "." && sound.File != ".." && filepath.Base(sound.File) == sound.File {
 					os.Remove(filepath.Join(s.root, "sounds", sound.File))
 				}
 				return l, nil
 			}
 		}
 	}
-	return l, errors.New("Sound not found")
+	// A stale UI may retry removal after the clip was already removed on disk.
+	return l, nil
 }
 
 // Windows' standard file picker. It returns only the explicitly chosen local file.
