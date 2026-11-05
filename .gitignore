@@ -1,0 +1,14 @@
+release/
+*.log
+inversion-result.json
+*.zip
+native-*-result.json
+.qa-profile/
+.profile-backup/
+*.obj
+*.lib
+*.exp
+native/test/*.vst3
+*.exe
+*.tmp
+*.res
