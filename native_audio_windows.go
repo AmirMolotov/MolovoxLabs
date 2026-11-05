@@ -179,6 +179,7 @@ type renderEndpoint struct {
 	toneLeft  int
 }
 type nativeEngine struct {
+	micRecordTap   atomic.Pointer[samplerAudioTap]
 	soloClips      bool
 	samplerTap     atomic.Pointer[samplerAudioTap]
 	configMu       sync.Mutex
@@ -407,6 +408,14 @@ func (e *nativeEngine) render(r *renderEndpoint, output []byte, frames int, prim
 		r.toneLeft = 24000
 	}
 	tap := e.samplerTap.Load()
+	var micTap *samplerAudioTap
+	if primary {
+		micTap = e.micRecordTap.Load()
+	}
+	var micAt uint64
+	if micTap != nil {
+		micAt = micTap.write.Load()
+	}
 	sounds := e.voices.Load()
 	if tap != nil && tap.OutputID != r.ID {
 		tap = nil
@@ -427,6 +436,9 @@ func (e *nativeEngine) render(r *renderEndpoint, output []byte, frames int, prim
 			x += v * r.liveGains[i]
 		}
 		x /= float32(len(e.captures))
+		if micTap != nil {
+			micTap.data[(micAt+uint64(frame))%captureRingSize].Store(math.Float32bits(x))
+		}
 		var clips [8]float32
 		boardMix := r.boardSamples(sounds, &clips)
 		var y float32
@@ -481,6 +493,9 @@ func (e *nativeEngine) render(r *renderEndpoint, output []byte, frames int, prim
 	if tap != nil {
 		tap.write.Store(tapAt + uint64(frames))
 	}
+	if micTap != nil {
+		micTap.write.Store(micAt + uint64(frames))
+	}
 	if primary {
 		e.renderedFrames.Add(uint64(frames))
 		if missing {
@@ -493,6 +508,7 @@ func (e *nativeEngine) render(r *renderEndpoint, output []byte, frames int, prim
 	}
 }
 func (e *nativeEngine) stopLocked() {
+	e.micRecordTap.Store(nil)
 	e.samplerTap.Store(nil)
 	e.closing.Store(true)
 	e.voices.Store(nil)

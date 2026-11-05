@@ -1,5 +1,6 @@
 'use strict';
 let patchGraph=null,patchPending=null,patchPointer=null,patchDragging=null;
+let patchZoom=1;
 const patchWidth=210,patchPortY=74;
 function patchNode(kind,extra={},x=40,y=60){return {ID:crypto.randomUUID(),Kind:kind,X:x,Y:y,...extra};}
 function defaultPatch(mode='mic',enabled=false){
@@ -106,7 +107,7 @@ function renderPatch(){
   if(node.Kind==='effect'){
    const f=micFilters.find(f=>f.ID===node.FilterID),row=document.createElement('div');row.className='patch-node-actions';
    const enabled=document.createElement('button');enabled.className='patch-effect-toggle'+(f?.Enabled?' on':'');enabled.textContent=f?.Enabled?'On':'Bypassed';enabled.onclick=()=>{f.Enabled=!f.Enabled;renderFilters();commitPatch();};
-   const edit=document.createElement('button');edit.className='text-button';edit.textContent='Edit effect';edit.onclick=()=>{openTab('filters');document.querySelector(`[data-filter-id="${node.FilterID}"]`)?.scrollIntoView({behavior:'smooth',block:'center'});};row.append(enabled,edit);card.append(row);
+   const edit=document.createElement('button');edit.className='text-button';edit.textContent='Parameters';edit.onclick=()=>{document.querySelector(`[data-filter-id="${node.FilterID}"]`)?.scrollIntoView({behavior:'smooth',block:'center'});};row.append(enabled,edit);card.append(row);
   }
   const port=(direction)=>{const button=document.createElement('button');button.className='patch-port '+direction;button.dataset.direction=direction;button.dataset.node=node.ID;button.setAttribute('aria-label',(direction==='out'?'Connect output of ':'Connect input of ')+patchName(node));
    if(direction==='out'){button.onpointerdown=e=>{if(e.button!==0)return;e.preventDefault();patchPending=node.ID;patchPointer=null;drawPatchCables();};button.onclick=e=>{if(e.detail===0){patchPending=patchPending===node.ID?null:node.ID;patchPointer=null;drawPatchCables();}};}
@@ -117,8 +118,8 @@ function renderPatch(){
  drawPatchCables();patchStatus();
 }
 window.addEventListener('pointermove',e=>{
- if(patchDragging){const d=patchDragging;d.node.X=Math.round(Math.max(16,Math.min(5000,d.startX+e.clientX-d.x)));d.node.Y=Math.round(Math.max(16,Math.min(5000,d.startY+e.clientY-d.y)));d.card.style.left=d.node.X+'px';d.card.style.top=d.node.Y+'px';drawPatchCables();}
- else if(patchPending){const rect=$('patchStage').getBoundingClientRect();patchPointer={x:e.clientX-rect.left,y:e.clientY-rect.top};drawPatchCables();}
+ if(patchDragging){const d=patchDragging;d.node.X=Math.round(Math.max(16,Math.min(5000,d.startX+(e.clientX-d.x)/patchZoom)));d.node.Y=Math.round(Math.max(16,Math.min(5000,d.startY+(e.clientY-d.y)/patchZoom)));d.card.style.left=d.node.X+'px';d.card.style.top=d.node.Y+'px';drawPatchCables();}
+ else if(patchPending){const rect=$('patchStage').getBoundingClientRect();patchPointer={x:(e.clientX-rect.left)/patchZoom,y:(e.clientY-rect.top)/patchZoom};drawPatchCables();}
 });
 window.addEventListener('pointerup',e=>{
  if(e.button!==0)return;
@@ -132,6 +133,14 @@ $('patchOutput').onchange=()=>{const id=$('patchOutput').value;if(!id)return;add
 $('patchBoardPreset').onclick=()=>{patchGraph=defaultPatch('board',true);commitPatch();};
 $('patchMicPreset').onclick=()=>{patchGraph=defaultPatch('mic',true);commitPatch();};
 $('patchClear').onclick=()=>{patchGraph.Preset='';patchGraph.Cables=[];patchPending=null;commitPatch();};
-$('patchDefine').onclick=()=>openTab('filters');
+$('patchDefine').onclick=()=>$('patchEffectsLibrary').scrollIntoView({behavior:'smooth',block:'start'});
+function patchWheel(event){
+ if(!event.deltaY)return;event.preventDefault();if(patchDragging)return;
+ const viewport=$('patchViewport'),stage=$('patchStage');
+ if(event.ctrlKey){viewport.scrollLeft+=event.deltaY*2;}
+ else{const rect=viewport.getBoundingClientRect(),x=event.clientX-rect.left-(viewport.clientLeft||0),y=event.clientY-rect.top-(viewport.clientTop||0),ratio=Math.max(.35,Math.min(3,patchZoom*Math.exp(-Math.max(-300,Math.min(300,event.deltaY))*.003)))/patchZoom;const left=(viewport.scrollLeft+x)*ratio-x,top=(viewport.scrollTop+y)*ratio-y;patchZoom*=ratio;stage.style.zoom=patchZoom;viewport.scrollLeft=left;viewport.scrollTop=top;$('patchZoomLabel').textContent=Math.round(patchZoom*100)+'%';}
+ if(patchPending){const rect=stage.getBoundingClientRect();patchPointer={x:(event.clientX-rect.left)/patchZoom,y:(event.clientY-rect.top)/patchZoom};drawPatchCables();}
+}
+$('patchViewport').addEventListener?.('wheel',patchWheel,{passive:false});
 $('patchStage').oncontextmenu=e=>{e.preventDefault();e.stopPropagation();cancelPatchInteraction();};
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&(patchPending||patchDragging)){e.preventDefault();e.stopImmediatePropagation();cancelPatchInteraction();}},true);

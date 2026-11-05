@@ -17,6 +17,11 @@ test('soundboard preset connects effects to sounds and keeps microphone on a dry
  const board=graph.Nodes.find(n=>n.Kind==='board'),mic=graph.Nodes.find(n=>n.Kind==='mic'),out=graph.Nodes.find(n=>n.Kind==='output'),fx=graph.Nodes.filter(n=>n.Kind==='effect');
  assert.equal(graph.Enabled,true);assert.ok(graph.Cables.some(c=>c.From===board.ID&&c.To===fx[0].ID));assert.ok(graph.Cables.some(c=>c.From===fx[1].ID&&c.To===out.ID));assert.ok(graph.Cables.some(c=>c.From===mic.ID&&c.To===out.ID));assert.equal(h.configured,1);
 });
+test('wheel zoom preserves the point under the pointer and Ctrl-wheel only pans',()=>{
+ const h=harness(),viewport=h.$('patchViewport'),stage=h.$('patchStage');Object.assign(viewport,{scrollLeft:200,scrollTop:100,getBoundingClientRect:()=>({left:10,top:20})});stage.style={};let prevented=0;
+ h.patchWheel({clientX:110,clientY:120,deltaY:-100,preventDefault(){prevented++;}});const zoom=vm.runInContext('patchZoom',h);assert.ok(zoom>1);assert.ok(Math.abs((viewport.scrollLeft+100)/zoom-300)<1e-6);assert.ok(Math.abs((viewport.scrollTop+100)/zoom-200)<1e-6);
+ const oldLeft=viewport.scrollLeft,oldTop=viewport.scrollTop;h.patchWheel({ctrlKey:true,deltaY:80,preventDefault(){prevented++;}});assert.equal(viewport.scrollLeft,oldLeft+160);assert.equal(viewport.scrollTop,oldTop);assert.equal(vm.runInContext('patchZoom',h),zoom);assert.equal(prevented,2);
+});
 test('a pad can create its own effect chain without changing microphone effects',()=>{
  const h=harness();h.library.Boards=[{ID:'board',Sounds:[{ID:'clip-one',Name:'Clip one'}]}];h.filterDefaults={gain:{GainDB:6}};h.filterNames={gain:'Gain'};h.renderFilters=()=>{};h.renderGroups=()=>{};
  vm.runInContext('patchGraph.Preset="";patchGraph.Nodes.push(patchNode("clip",{ClipID:"clip-one"},40,450));',h);const source=h.patchOptions().Nodes.find(n=>n.Kind==='clip');h.attachClipEffect(source.ID,'gain');const graph=h.patchOptions(),filter=h.micFilters.at(-1),effect=graph.Nodes.find(n=>n.FilterID===filter.ID);assert.equal(filter.ClipID,'clip-one');assert.ok(graph.Cables.some(c=>c.From===source.ID&&c.To===effect.ID));assert.ok(graph.Cables.some(c=>c.From===effect.ID&&graph.Nodes.some(n=>n.ID===c.To&&n.Kind==='output')));

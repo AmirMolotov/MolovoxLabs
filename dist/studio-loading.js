@@ -1,6 +1,6 @@
 'use strict';
 const loadingJobs=new Map();let loadingSequence=0,settingsTail=Promise.resolve();
-function recordingIsLive(){return typeof samplerRecording!=='undefined'&&samplerRecording?.recorder?.state==='recording'&&!samplerRecording.stopping;}
+function recordingIsLive(){return (typeof samplerRecording!=='undefined'&&samplerRecording?.recorder?.state==='recording'&&!samplerRecording.stopping)||(typeof boardRecording!=='undefined'&&!!boardRecording&&!boardRecording.stopping);}
 function renderLoading(){
  const live=recordingIsLive(),jobs=[...loadingJobs.values()],blocking=jobs.filter(job=>job.blocking),visible=blocking.at(-1)||jobs.at(-1);
  $('appLoader').hidden=live||!blocking.length;$('appActivity').hidden=live||!jobs.length;

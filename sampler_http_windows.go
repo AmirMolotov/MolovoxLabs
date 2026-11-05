@@ -119,12 +119,20 @@ func (h *samplerHTTP) handler(fallback http.Handler) http.Handler {
 			w.Write(data)
 			return
 		}
+		if r.Method == http.MethodGet && strings.HasPrefix(path, "sampler/mic-audio/") {
+			h.writeMicAudio(w, r, strings.TrimPrefix(path, "sampler/mic-audio/"), false)
+			return
+		}
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		if r.Header.Get("Origin") != "http://"+r.Host {
 			http.Error(w, "Same-origin request required", http.StatusForbidden)
+			return
+		}
+		if strings.HasPrefix(path, "sampler/mic-finish/") {
+			h.writeMicAudio(w, r, strings.TrimPrefix(path, "sampler/mic-finish/"), true)
 			return
 		}
 		if path == "sampler/bite" {
@@ -244,7 +252,7 @@ func (h *samplerHTTP) handler(fallback http.Handler) http.Handler {
 				if r.Header.Get("X-Preview-ID") == "@audio-preview" {
 					id = "@audio-preview"
 				}
-				err = h.engine.PlayPreview(id, samples, r.Header.Get("X-Sampler-Board"),r.Header.Get("X-Preview-Loop")=="true")
+				err = h.engine.PlayPreview(id, samples, r.Header.Get("X-Sampler-Board"), r.Header.Get("X-Preview-Loop") == "true")
 			}
 			if err != nil {
 				http.Error(w, err.Error(), 400)
@@ -264,4 +272,17 @@ func (h *samplerHTTP) handler(fallback http.Handler) http.Handler {
 		}
 		http.Error(w, fmt.Sprintf("Unknown sampler operation"), 404)
 	})
+}
+
+func (h *samplerHTTP) writeMicAudio(w http.ResponseWriter, r *http.Request, id string, finish bool) {
+	cursor, _ := strconv.ParseUint(r.URL.Query().Get("cursor"), 10, 64)
+	data, end, dropped, err := h.engine.micRecordingAudio(id, cursor, finish)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusGone)
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("X-Audio-Cursor", strconv.FormatUint(end, 10))
+	w.Header().Set("X-Audio-Dropped", strconv.FormatUint(dropped, 10))
+	w.Write(data)
 }

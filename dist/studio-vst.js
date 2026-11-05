@@ -42,7 +42,7 @@ async function openVSTParameters(filter){
 }
 function renderVSTParameters(){
  const search=$('vstSearch').value.toLowerCase(),list=vstParameters.filter(p=>p.Name.toLowerCase().includes(search));$('vstParamList').replaceChildren();
- for(const param of list.slice(0,150)){
+ for(const param of list){
   const row=document.createElement('label');row.className='vst-param';const title=document.createElement('span');title.textContent=param.Name;
   const value=document.createElement('output');value.textContent=param.Display||Math.round(param.Value*100)+'%';
   const slider=document.createElement('input');slider.type='range';slider.min=0;slider.max=1;slider.step=param.Steps>0?1/param.Steps:.001;slider.value=param.Value;slider.disabled=param.ReadOnly;slider.setAttribute('aria-label',param.Name);
@@ -51,11 +51,11 @@ function renderVSTParameters(){
   slider.oninput=()=>{value.textContent=Math.round(Number(slider.value)*100)+'%';clearTimeout(timer);timer=setTimeout(apply,60);};slider.onchange=apply;
   row.append(title,value,slider);$('vstParamList').append(row);
  }
- $('vstParamStatus').textContent=list.length>150?'Showing the first 150 parameters. Search to narrow the list.':list.length+' parameter'+(list.length===1?'':'s')+'.';
+ $('vstParamStatus').textContent=list.length+' parameter'+(list.length===1?'':'s')+'.';
 }
 $('vstSearch').oninput=renderVSTParameters;
 $('closeVSTDialog').onclick=()=>$('vstDialog').close();
 setInterval(async()=>{
  if(!ready||vstPersistBusy||!micFilters.some(f=>f.Kind==='vst3'))return;vstPersistBusy=true;
- try{await nativeSaveVSTState();if(currentTab==='filters')refreshVSTCards();}catch(e){message('Plugin settings could not be saved: '+errorText(e));}finally{vstPersistBusy=false;}
+ try{await nativeSaveVSTState();if(currentTab==='patch')refreshVSTCards();}catch(e){message('Plugin settings could not be saved: '+errorText(e));}finally{vstPersistBusy=false;}
 },5000);

@@ -111,6 +111,10 @@ func (e *nativeEngine) samplerAudio(id string, cursor uint64) ([]byte, uint64, u
 	if tap == nil || tap.ID != id {
 		return nil, 0, 0, errors.New("Recording audio stream has stopped")
 	}
+	return readAudioTap(tap, cursor, 96000)
+}
+
+func readAudioTap(tap *samplerAudioTap, cursor, maxFrames uint64) ([]byte, uint64, uint64, error) {
 	end := tap.write.Load()
 	dropped := uint64(0)
 	if cursor > end {
@@ -120,14 +124,47 @@ func (e *nativeEngine) samplerAudio(id string, cursor uint64) ([]byte, uint64, u
 		dropped = end - cursor - captureRingSize
 		cursor = end - captureRingSize
 	}
-	if end-cursor > 96000 {
-		end = cursor + 96000
+	if end-cursor > maxFrames {
+		end = cursor + maxFrames
 	}
 	data := make([]byte, int(end-cursor)*4)
 	for i := cursor; i < end; i++ {
 		binary.LittleEndian.PutUint32(data[int(i-cursor)*4:], tap.data[i%captureRingSize].Load())
 	}
 	return data, end, dropped, nil
+}
+
+func (e *nativeEngine) beginMicRecording() (string, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if !e.running.Load() || len(e.captures) == 0 || len(e.renders) == 0 {
+		return "", errors.New("Start listening with a selected microphone and output first")
+	}
+	if e.micRecordTap.Load() != nil {
+		return "", errors.New("A sound recording is already in progress")
+	}
+	id := newID()
+	e.micRecordTap.Store(&samplerAudioTap{ID: id})
+	return id, nil
+}
+func (e *nativeEngine) abortMicRecording(id string) {
+	if tap := e.micRecordTap.Load(); tap != nil && tap.ID == id {
+		e.micRecordTap.CompareAndSwap(tap, nil)
+	}
+}
+func (e *nativeEngine) micRecordingAudio(id string, cursor uint64, finish bool) ([]byte, uint64, uint64, error) {
+	tap := e.micRecordTap.Load()
+	if tap == nil || tap.ID != id {
+		return nil, 0, 0, errors.New("Microphone recording has stopped")
+	}
+	limit := uint64(96000)
+	if finish {
+		if !e.micRecordTap.CompareAndSwap(tap, nil) {
+			return nil, 0, 0, errors.New("Microphone recording has stopped")
+		}
+		limit = captureRingSize
+	}
+	return readAudioTap(tap, cursor, limit)
 }
 
 type samplerRecordingJob struct {

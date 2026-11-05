@@ -16,7 +16,7 @@ The single QuietLab.exe uses these separately installed components; it does not 
 
 ## Soundboards
 
-Choose a board, then Add sound to import audio or video, trim it, and save a new sound pad. Imported sources can be up to 8 GB; each saved pad can be up to 120 seconds. Click a pad to play; click a playing pad to stop it. Pads show waveform progress and remaining source time. Each sound accepts multiple global keyboard and MIDI triggers. Open its trigger editor, click Add shortcut and press a modified key or function key. For MIDI, select a connected controller in that dialog, click Learn MIDI, then play a note or controller; assignments save immediately for both sound and video pads. Sound triggers apply only to the selected board. Each sound/video pad has an Effects action: it opens its dedicated Patch bay source, where Add effect to this pad creates and wires a separate effect instance. You can add a chain of effects or wire existing instances manually. Individually routed pads are removed from the broad board mix to prevent a second dry copy. Pad-owned effects are not inserted into the microphone chain when Patch bay is off; the shared eight-effect-instance limit still applies.
+Choose a board, then Add sound to import audio or video, trim it, and save a new sound pad. Imported sources can be up to 8 GB; each saved pad can be up to 120 seconds. Click a pad to play; click a playing pad to stop it. Pads fill left to right with playback progress and show the time remaining. Use Record sound and Stop & save to add a microphone recording to the current board, up to two minutes. It captures the selected microphone mix before effects or monitoring, without recording other pads. Each sound accepts multiple global keyboard and MIDI triggers. Open its trigger editor, click Add shortcut and press a modified key or function key. For MIDI, select a connected controller in that dialog, click Learn MIDI, then play a note or controller; assignments save immediately for both sound and video pads. Sound triggers apply only to the selected board. Each sound/video pad has an Effects action: it opens its dedicated Patch bay source, where Add effect to this pad creates and wires a separate effect instance. You can add a chain of effects or wire existing instances manually. Individually routed pads are removed from the broad board mix to prevent a second dry copy. Pad-owned effects are not inserted into the microphone chain when Patch bay is off; the shared eight-effect-instance limit still applies.
 
 Board options exports/imports `.qlboard` packages containing the original audio files and assignments. Individual source audio can also be exported from a sound's shortcut editor. Delete this board asks for confirmation, removes copied audio and shortcuts, and stops its clips. Original files, exports and audio shared with another board are preserved. Deleting the last board creates a new empty board.
 
@@ -36,7 +36,7 @@ This records the sampler performance, not the desktop or webcam. Existing .qlboa
 
 Browser checks in tests/browser/sampler-smoke.html verify real PCM worklet audio, WebM encoding, video/audio decoding and cropped thumbnails. Run its small localhost server for the interactive check. Native tests verify stored sample ranges/crops, media range requests, upload boundaries, selected post-effect audio capture, recordings, recovery and shortcut scope.
 
-## Effects
+## Effects in Patch bay
 
 Select a built-in effect from the dropdown to add it immediately. Effects include gain, high-pass, low-pass, gate, compressor, pitch, noise reduction, added white noise, reverb, echo, chorus, distortion and robot. Define up to eight effect instances, reorder them, adjust their settings, and assign keyboard/MIDI toggles to individual effects, groups or the entire effect chain.
 
@@ -46,10 +46,10 @@ When Patch bay routing is off, the effect list processes the microphone and soun
 
 Use the **Patch bay** tab to connect sources, effect instances and outputs with cables.
 
-1. Define the desired effects in Effects.
+1. Define effects in the Effects and parameters section below the Patch bay rack.
 2. Select **Soundboards → effects** for a ready-to-use layout, or enable **Use patch bay routing** and add nodes yourself.
 3. Drag a right-hand output socket to a left-hand input socket. Clicking the two sockets also connects them; keyboard users can activate the sockets in sequence.
-4. Click a cable to unplug it. Right-click or press Escape to cancel an unfinished cable or node move. Drag node headers to arrange the rack. Node positions and cables are remembered automatically.
+4. Click a cable to unplug it. Right-click or press Escape to cancel an unfinished cable or node move. Drag node headers to arrange the rack. Wheel zooms at the cursor; Ctrl+wheel pans sideways. Node positions and cables are remembered automatically.
 
 Quick Start layouts stay linked to the Effects library: adding, removing or reordering effects updates the active layout automatically. Manual cable/node edits switch to a custom layout, which is preserved. Older recognizable Quick Start layouts are migrated automatically.
 
@@ -65,7 +65,7 @@ For Discord with VB-Cable: select CABLE Input as a Quiet Lab output and CABLE Ou
 
 ## VST3
 
-In Effects, use Scan plugins, then select a VST3 effect to add it. The plugin's native editor and a searchable generic Parameters editor are available on its card. Standard Windows VST3 locations and a VST3 folder beside the executable are scanned. Additional folders can be listed in Settings. Installed plugin metadata and plugin states are saved locally; plugins themselves must be installed/licensed separately and are not included in board exports.
+In Patch bay → Effects and parameters, use Scan plugins, then select a VST3 effect to add it. The plugin's native editor and a searchable generic Parameters editor are available on its card. Standard Windows VST3 locations and a VST3 folder beside the executable are scanned. Additional folders can be listed in Settings. Installed plugin metadata and plugin states are saved locally; plugins themselves must be installed/licensed separately and are not included in board exports.
 
 Supports Windows x64 VST3 audio effects with one mono/stereo input and one mono/stereo output at 48 kHz. VST2, instruments, plugin MIDI input and sidechains are unsupported. Stereo plugin output is folded into the app's mono signal path. The 128-sample bridge adds about 2.7 ms plus the plugin's reported latency. Pitch adds about 44 ms average delay; spectral noise reduction adds about 11 ms. These effects modify recorded microphone signals; this app does not provide headphone active noise cancellation.
 

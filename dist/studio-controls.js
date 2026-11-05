@@ -3,7 +3,7 @@ const filterNames={gain:'Gain',highpass:'High-pass',lowpass:'Low-pass',gate:'Noi
 const filterDefaults={gain:{GainDB:0},highpass:{Frequency:80},lowpass:{Frequency:12000},gate:{Threshold:-45},compressor:{Threshold:-18,Ratio:4},pitch:{Semitones:0},noise:{Strength:75,NoiseDB:-45},addnoise:{NoiseLevelDB:-36},reverb:{Mix:25,RoomSize:55,Damping:45},echo:{Mix:30,DelayMS:300,Feedback:35},chorus:{Mix:40,RateHz:1.2,DepthMS:5},distortion:{Mix:65,DriveDB:18,OutputDB:-12},robot:{Mix:100,Frequency:90}};
 function renderFilters(){
  $('filtersActive').checked=!bypassFilters;$('filterCards').replaceChildren();
- if(!micFilters.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='Your microphone is unfiltered. Choose a filter above to shape its sound.';$('filterCards').append(empty);}
+ if(!micFilters.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='No effects yet. Choose an effect above to add its parameters.';$('filterCards').append(empty);}
  micFilters.forEach((filter,index)=>{
   const card=document.createElement('div');card.className='card filter-card'+(bypassFilters?' chain-bypassed':'');card.dataset.filterId=filter.ID;
   const top=document.createElement('div');top.className='filter-top';

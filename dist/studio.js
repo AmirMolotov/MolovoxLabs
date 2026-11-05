@@ -81,7 +81,7 @@ function fillDevices(list,prefs){
  return prefs.Saved&&((prefs.Inputs||[]).some(x=>!list.Inputs.some(d=>d.ID===x.ID))||(prefs.Outputs||[]).some(id=>!list.Outputs.some(d=>d.ID===id)));
 }
 async function stop(reason='Listening paused. Devices released.'){
- if(busy)return;$('samplerEditorVideo').pause();if(samplerRecording&&!samplerRecording.stopping)await stopSamplerRecording();busy=true;$('pause').disabled=true;
+ if(busy)return;$('samplerEditorVideo').pause();if(samplerRecording&&!samplerRecording.stopping)await stopSamplerRecording();if(boardRecording)await stopBoardRecording();busy=true;$('pause').disabled=true;
  try{await queueSettings(()=>withLoading('Pausing audio…',()=>nativeStop()));clearInterval(pollTimer);pollTimer=null;setLive(false);idle();updatePlayback([]);$('inputDB').textContent=$('outputDB').textContent='— dBFS';message(reason);}
  catch(e){message(errorText(e));}finally{busy=false;$('pause').disabled=false;}
 }
@@ -139,7 +139,7 @@ function renderPads(){
   const play=document.createElement('button');play.className='sound-pad-play';play.setAttribute('aria-label','Play or stop '+sound.Name);
   const playIcon=document.createElement('span');playIcon.className='play-icon';playIcon.textContent='▶';const title=document.createElement('strong');title.textContent=sound.Name;
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 240 36');svg.classList.add('pad-wave');svg.setAttribute('aria-hidden','true');
-  const defs=document.createElementNS(svg.namespaceURI,'defs'),gradient=document.createElementNS(svg.namespaceURI,'linearGradient'),gradientID='clip-gradient-'+sound.ID;gradient.id=gradientID;
+  const defs=document.createElementNS(svg.namespaceURI,'defs'),gradient=document.createElementNS(svg.namespaceURI,'linearGradient'),gradientID='clip-gradient-'+sound.ID;gradient.id=gradientID;gradient.setAttribute('gradientUnits','userSpaceOnUse');gradient.setAttribute('x1','0');gradient.setAttribute('x2','240');gradient.setAttribute('y1','0');gradient.setAttribute('y2','0');
   const stop1=document.createElementNS(svg.namespaceURI,'stop'),stop2=document.createElementNS(svg.namespaceURI,'stop');stop1.setAttribute('stop-color','#c4ed9e');stop2.setAttribute('stop-color','#49624f');stop1.setAttribute('offset','0%');stop2.setAttribute('offset','0%');gradient.append(stop1,stop2);defs.append(gradient);svg.append(defs);
   const peaks=sound.Waveform||[];
   for(let i=0;i<40;i++){const bar=document.createElementNS(svg.namespaceURI,'rect'),height=Math.max(2,(peaks[i]||0)*30);bar.setAttribute('x',String(i*6));bar.setAttribute('y',String(18-height/2));bar.setAttribute('width','3');bar.setAttribute('height',String(height));bar.setAttribute('rx','1.5');bar.setAttribute('fill','url(#'+gradientID+')');svg.append(bar);}
@@ -161,6 +161,7 @@ function updatePlayback(items){
 $('boardSelect').onchange=async()=>{renderPads();await save();};
 let deletingBoardID=null;
 function requestBoardDeletion(id){
+ if(boardRecording?.board===id){message('Stop and save this board’s recording before deleting it.');return;}
  const board=library.Boards.find(b=>b.ID===id);if(!board)return;
  deletingBoardID=board.ID;$('deleteBoardDescription').textContent='Delete “'+board.Name+'” and its '+board.Sounds.length+' sound'+(board.Sounds.length===1?'':'s')+'?';
  $('deleteBoardStatus').textContent='';$('confirmDeleteBoard').disabled=false;document.querySelector('.board-menu').open=false;$('deleteBoardDialog').showModal();$('cancelDeleteBoard').focus();

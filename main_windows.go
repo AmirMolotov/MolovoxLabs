@@ -185,6 +185,8 @@ func main() {
 	media.onLibraryChanged = reloadTriggers
 	bindings := map[string]interface{}{
 		"nativeSamplerLibrary":     store.SamplerLibrary,
+		"nativeBeginMicRecording":  engine.beginMicRecording,
+		"nativeAbortMicRecording":  engine.abortMicRecording,
 		"nativeCreateSamplerBoard": store.CreateSamplerBoard,
 		"nativePrepareMedia":       store.PrepareMedia,
 		"nativeSetPlaybackMode":    engine.SetPlaybackMode,
