@@ -72,6 +72,15 @@ func (h *samplerHTTP) handler(fallback http.Handler) http.Handler {
 			http.ServeContent(w, r, info.Name(), info.ModTime(), f)
 			return
 		}
+		if r.Method == http.MethodGet && strings.HasPrefix(path, "sampler/clip/") {
+			file, err := h.store.AudioClipPath(strings.TrimPrefix(path, "sampler/clip/"))
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			http.ServeFile(w, r, file)
+			return
+		}
 		if r.Method == http.MethodGet && strings.HasPrefix(path, "sampler/audio/") {
 			cursor, _ := strconv.ParseUint(r.URL.Query().Get("cursor"), 10, 64)
 			data, end, dropped, err := h.engine.samplerAudio(strings.TrimPrefix(path, "sampler/audio/"), cursor)
@@ -91,6 +100,29 @@ func (h *samplerHTTP) handler(fallback http.Handler) http.Handler {
 		}
 		if r.Header.Get("Origin") != "http://"+r.Host {
 			http.Error(w, "Same-origin request required", http.StatusForbidden)
+			return
+		}
+		if path == "sampler/bite" {
+			body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 12*1024*1024))
+			if err != nil {
+				http.Error(w, "Sound bite is too large", 413)
+				return
+			}
+			name, err := base64.StdEncoding.DecodeString(r.Header.Get("X-Bite-Name"))
+			if err != nil {
+				http.Error(w, "Invalid name", 400)
+				return
+			}
+			library, err := h.store.CreateAudioBite(r.Header.Get("X-Bite-Board"), string(name), body)
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			if h.onLibraryChanged != nil {
+				h.onLibraryChanged()
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(library)
 			return
 		}
 		if path == "sampler/sample" {

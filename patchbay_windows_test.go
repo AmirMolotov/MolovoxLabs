@@ -13,6 +13,24 @@ func boardEffectPatch() PatchBay {
 	}, Cables: []PatchCable{{From: "board", To: "fx"}, {From: "fx", To: "out"}, {From: "mic", To: "out"}}}
 }
 
+func TestVideoSamplerSourceRoutesSeparatelyThroughEffect(t *testing.T) {
+	_, state, _ := samplerFixture(t)
+	videoBoard := state.Library.Boards[1].ID
+	graph := boardEffectPatch()
+	graph.Nodes[1].BoardID = videoBoard
+	filters := []MicFilter{{ID: "gain", Kind: "gain", Enabled: true, GainDB: -6.020599913}}
+	p, err := compilePatch(graph, filters)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sounds := &boardVoices{Slots: [8]boardVoice{{BoardID: videoBoard}, {BoardID: "default"}}}
+	clips := [8]float32{.4, .8}
+	o := &AudioOptions{Filters: filters, Volume: 1, BoardVolume: 1}
+	if got := p.sample(&renderEndpoint{}, 0, sounds, &clips, o); math.Abs(float64(got-.2)) > 1e-5 {
+		t.Fatal("Video sampler route included unrelated board audio or missed effect", got)
+	}
+}
+
 func TestPatchRoutesBoardThroughEffectsAndKeepsMicrophoneDry(t *testing.T) {
 	filters := []MicFilter{{ID: "gain", Kind: "gain", Enabled: true, GainDB: 20 * math.Log10(2)}}
 	p, err := compilePatch(boardEffectPatch(), filters)

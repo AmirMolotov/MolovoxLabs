@@ -35,7 +35,7 @@ function patchOptions(){
 }
 function patchName(node){
  if(node.Kind==='mic')return 'Microphone mix';
- if(node.Kind==='board')return node.BoardID?(library.Boards.find(b=>b.ID===node.BoardID)?.Name||'Missing soundboard'):'All soundboards';
+ if(node.Kind==='board')return node.BoardID?(library.Boards.find(b=>b.ID===node.BoardID)?.Name||'Missing board'):'All boards + video samplers';
  if(node.Kind==='effect'){const f=micFilters.find(f=>f.ID===node.FilterID);return f?filterTitle(f):'Missing effect';}
  return node.DeviceID?(devices?.Outputs?.find(d=>d.ID===node.DeviceID)?.Name||'Output device'):'Selected outputs';
 }
@@ -73,18 +73,18 @@ function drawPatchCables(){
 function renderPatch(){
  if(!patchGraph)return;patchOptions();$('patchEnabled').checked=patchGraph.Enabled;
  for(const [id,mode] of [['patchBoardPreset','board'],['patchMicPreset','mic']]){$(id).classList.toggle('is-selected',patchGraph.Preset===mode);$(id).setAttribute('aria-pressed',String(patchGraph.Preset===mode));}
- const source=$('patchSource');source.replaceChildren(new Option('Add a source…',''));source.options[0].disabled=true;source.add(new Option('Microphone mix','mic'));source.add(new Option('All soundboards','board:'));for(const b of library.Boards)source.add(new Option(b.Name,'board:'+b.ID));source.value='';
+ const source=$('patchSource');source.replaceChildren(new Option('Add a source…',''));source.options[0].disabled=true;source.add(new Option('Microphone mix','mic'));source.add(new Option('All boards + video samplers','board:'));for(const kind of ['audio','video']){const group=document.createElement('optgroup');group.label=kind==='video'?'Video samplers':'Soundboards';for(const b of library.Boards.filter(b=>(b.Kind==='video')===(kind==='video')))group.append(new Option(b.Name,'board:'+b.ID));source.append(group);}source.value='';
  const effects=$('patchEffect');effects.replaceChildren(new Option('Add an effect…',''));effects.options[0].disabled=true;const used=new Set(patchGraph.Nodes.filter(n=>n.Kind==='effect').map(n=>n.FilterID));for(const f of micFilters)if(!used.has(f.ID))effects.add(new Option(filterTitle(f),f.ID));effects.value='';effects.disabled=effects.options.length===1;
  const output=$('patchOutput');output.replaceChildren(new Option('Add an output…',''));output.options[0].disabled=true;output.add(new Option('All selected outputs','all'));for(const id of selections().Outputs){const d=devices?.Outputs?.find(d=>d.ID===id);output.add(new Option(d?.Name||'Selected output',id));}output.value='';
  const stage=$('patchStage'),nodes=$('patchNodes');nodes.replaceChildren();
  stage.style.width=Math.max(1100,...patchGraph.Nodes.map(n=>n.X+patchWidth+120))+'px';stage.style.height=Math.max(560,...patchGraph.Nodes.map(n=>n.Y+190))+'px';
  for(const node of patchGraph.Nodes){
-  const card=document.createElement('article');card.className='patch-node '+node.Kind;card.style.left=node.X+'px';card.style.top=node.Y+'px';card.dataset.patchNode=node.ID;
-  const header=document.createElement('div');header.className='patch-node-header';const kind=document.createElement('span');kind.className='patch-node-kind';kind.textContent={mic:'INPUT',board:'SOUNDBOARD',effect:'EFFECT',output:'OUTPUT'}[node.Kind];
+  const card=document.createElement('article');const isVideo=node.Kind==='board'&&library.Boards.some(b=>b.ID===node.BoardID&&b.Kind==='video');card.className='patch-node '+node.Kind+(isVideo?' video-source':'');card.style.left=node.X+'px';card.style.top=node.Y+'px';card.dataset.patchNode=node.ID;
+  const header=document.createElement('div');header.className='patch-node-header';const kind=document.createElement('span');kind.className='patch-node-kind';kind.textContent=isVideo?'VIDEO SAMPLER':{mic:'INPUT',board:'SOUNDBOARD',effect:'EFFECT',output:'OUTPUT'}[node.Kind];
   const remove=document.createElement('button');remove.className='icon-close patch-remove';remove.setAttribute('aria-label','Remove '+patchName(node)+' from patch bay');remove.onclick=()=>{patchGraph.Preset='';patchGraph.Nodes=patchGraph.Nodes.filter(n=>n.ID!==node.ID);patchGraph.Cables=patchGraph.Cables.filter(c=>c.From!==node.ID&&c.To!==node.ID);commitPatch();};header.append(kind,remove);
   header.onpointerdown=e=>{if(e.button!==0||e.target.closest('button'))return;patchDragging={node,card,header,pointerID:e.pointerId,x:e.clientX,y:e.clientY,startX:node.X,startY:node.Y};header.setPointerCapture(e.pointerId);e.preventDefault();};
   const title=document.createElement('strong');title.textContent=patchName(node);card.append(header,title);
-  const note=document.createElement('small');note.textContent=node.Kind==='mic'?($('monitorMic').checked?'Microphone → outputs is on':'Muted by the microphone switch'):node.Kind==='board'?'Clips + keyboard / MIDI triggers':node.Kind==='output'?'Choose devices in Settings':'Defined in your Effects library';card.append(note);
+  const note=document.createElement('small');note.textContent=node.Kind==='mic'?($('monitorMic').checked?'Microphone → outputs is on':'Muted by the microphone switch'):node.Kind==='board'?(isVideo?'Video pad audio · keyboard / MIDI':'Clips + keyboard / MIDI triggers'):node.Kind==='output'?'Choose devices in Settings':'Defined in your Effects library';card.append(note);
   if(node.Kind==='effect'){
    const f=micFilters.find(f=>f.ID===node.FilterID),row=document.createElement('div');row.className='patch-node-actions';
    const enabled=document.createElement('button');enabled.className='patch-effect-toggle'+(f?.Enabled?' on':'');enabled.textContent=f?.Enabled?'On':'Bypassed';enabled.onclick=()=>{f.Enabled=!f.Enabled;renderFilters();commitPatch();};
