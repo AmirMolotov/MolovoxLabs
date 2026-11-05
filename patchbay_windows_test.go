@@ -120,6 +120,8 @@ func TestNativeRenderAppliesSoundboardGraph(t *testing.T) {
 func TestPatchLayoutPersistsInPreferences(t *testing.T) {
 	s := &appStore{root: t.TempDir()}
 	graph := boardEffectPatch()
+	graph.Version = 1
+	graph.Preset = "board"
 	graph.Nodes[1].X = 320
 	graph.Nodes[1].Y = 180
 	if err := s.SavePreferences(Preferences{Options: AudioOptions{Patch: graph}}); err != nil {
