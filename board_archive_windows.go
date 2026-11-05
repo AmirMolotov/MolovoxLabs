@@ -67,6 +67,9 @@ func (s *appStore) ExportBoard(id, path string) error {
 	if board == nil {
 		return errors.New("Board not found")
 	}
+	if board.Kind == "video" {
+		return errors.New("Use the sampler recorder to export video performances; sampler board packages are not supported")
+	}
 	f, err := os.CreateTemp(filepath.Dir(path), ".quiet-board-")
 	if err != nil {
 		return err
@@ -158,6 +161,14 @@ func (s *appStore) ImportBoard(path string) (libraryState, error) {
 	if pkg.Version != 1 {
 		return libraryState{}, errors.New("Unsupported soundboard package version")
 	}
+	if pkg.Board.Kind == "video" {
+		return libraryState{}, errors.New("Video sampler board packages are not supported")
+	}
+	for _, sound := range pkg.Board.Sounds {
+		if sound.Video != nil {
+			return libraryState{}, errors.New("Video samples require their source video library")
+		}
+	}
 	if len(pkg.Board.Sounds) > 64 || strings.TrimSpace(pkg.Board.Name) == "" || len(pkg.Board.Name) > 80 {
 		return libraryState{}, errors.New("Invalid soundboard manifest")
 	}
@@ -195,7 +206,13 @@ func (s *appStore) ImportBoard(path string) (libraryState, error) {
 	if err != nil {
 		return l, err
 	}
-	if len(l.Boards) >= 20 {
+	count := 0
+	for _, b := range l.Boards {
+		if b.Kind != "video" {
+			count++
+		}
+	}
+	if count >= 20 {
 		return l, errors.New("Maximum 20 soundboards")
 	}
 	// Keep free imported assignments, including multiple triggers per clip.

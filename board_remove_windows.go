@@ -33,8 +33,25 @@ func (s *appStore) RemoveBoard(id string) (BoardRemoval, error) {
 	}
 	removed := l.Boards[index]
 	l.Boards = append(l.Boards[:index:index], l.Boards[index+1:]...)
-	if len(l.Boards) == 0 {
-		l.Boards = []SoundBoard{{ID: newID(), Name: "My soundboard", Sounds: []SoundEntry{}}}
+	hasAudioBoard := false
+	for _, b := range l.Boards {
+		if b.Kind != "video" {
+			hasAudioBoard = true
+		}
+	}
+	if !hasAudioBoard {
+		l.Boards = append(l.Boards, SoundBoard{ID: newID(), Name: "My soundboard", Sounds: []SoundEntry{}})
+	}
+	if removed.Kind == "video" {
+		hasVideo := false
+		for _, b := range l.Boards {
+			if b.Kind == "video" {
+				hasVideo = true
+			}
+		}
+		if !hasVideo {
+			l.Boards = append(l.Boards, SoundBoard{ID: newID(), Kind: "video", Name: "Video sampler", Sounds: []SoundEntry{}})
+		}
 	}
 	if err = s.write("soundboards.json", l); err != nil {
 		return BoardRemoval{}, err

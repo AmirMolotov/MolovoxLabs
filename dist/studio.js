@@ -9,7 +9,7 @@ let padViews=new Map(),playingSounds=new Map();
 function openTab(name){
  currentTab=name;
  for(const tab of document.querySelectorAll('[data-tab]')){const on=tab.dataset.tab===name;tab.setAttribute('aria-selected',String(on));tab.tabIndex=on?0:-1;$(tab.getAttribute('aria-controls')).hidden=!on;}
- if(active)poll();else idle();if(name==='patch')renderPatch();
+ if(active)poll();else idle();if(name==='patch')renderPatch();if(name==='sampler')refreshSamplerRecordOutputs();
 }
 document.querySelectorAll('[data-tab]').forEach(tab=>{
  tab.onclick=()=>openTab(tab.dataset.tab);
@@ -21,7 +21,7 @@ function selections(){return {
  Outputs:[...document.querySelectorAll('#outputs input:checked')].map(el=>el.value)
 };}
 function options(){return {Patch:patchOptions(),Volume:Number($('master').value)/100,BoardVolume:Number($('boardVolume').value)/100,Enabled:false,MonitorMic:$('monitorMic').checked,Inverted:false,DelayMS:0,Filter:false,Filters:micFilters,BypassFilters:bypassFilters,InputGains:Object.fromEntries(selections().Inputs.map(x=>[x.ID,x.Gain]))};}
-function snapshotPreferences(){return {VSTFolders:vstFolders(),Saved:true,AutoListen:$('autoListen').checked,BoardID:$('boardSelect').value,GlobalKeys:$('globalKeys').checked,MIDIInput:$('midiInput').value,...selections(),Options:options(),FilterGroups:filterGroups,AllFilterHotkeys:allFilterHotkeys,AllFilterMIDIs:allFilterMIDIs};}
+function snapshotPreferences(){return {SamplerBoardID:$('samplerBoard').value,VSTFolders:vstFolders(),Saved:true,AutoListen:$('autoListen').checked,BoardID:$('boardSelect').value,GlobalKeys:$('globalKeys').checked,MIDIInput:$('midiInput').value,...selections(),Options:options(),FilterGroups:filterGroups,AllFilterHotkeys:allFilterHotkeys,AllFilterMIDIs:allFilterMIDIs};}
 async function save(){
  if(!ready)return false;
  clearTimeout(saveTimer);
@@ -81,7 +81,7 @@ function fillDevices(list,prefs){
  return prefs.Saved&&((prefs.Inputs||[]).some(x=>!list.Inputs.some(d=>d.ID===x.ID))||(prefs.Outputs||[]).some(id=>!list.Outputs.some(d=>d.ID===id)));
 }
 async function stop(reason='Listening paused. Devices released.'){
- if(busy)return;busy=true;$('pause').disabled=true;
+ if(busy)return;$('samplerEditorVideo').pause();if(samplerRecording&&!samplerRecording.stopping)await stopSamplerRecording();busy=true;$('pause').disabled=true;
  try{await queueSettings(()=>withLoading('Pausing audio…',()=>nativeStop()));clearInterval(pollTimer);pollTimer=null;setLive(false);idle();updatePlayback([]);$('inputDB').textContent=$('outputDB').textContent='— dBFS';message(reason);}
  catch(e){message(errorText(e));}finally{busy=false;$('pause').disabled=false;}
 }
@@ -120,8 +120,8 @@ window.addEventListener('resize',()=>{if(!active)idle();});
 window.addEventListener('pagehide',()=>{nativeStop().catch(()=>{});});
 function renderLibrary(preferred){
  const previous=preferred||$('boardSelect').value;$('boardSelect').replaceChildren();
- for(const b of library.Boards)$('boardSelect').add(new Option(b.Name,b.ID));
- if(library.Boards.some(b=>b.ID===previous))$('boardSelect').value=previous;renderPads();if(patchGraph)renderPatch();
+ for(const b of library.Boards.filter(b=>b.Kind!=='video'))$('boardSelect').add(new Option(b.Name,b.ID));
+ if(library.Boards.some(b=>b.Kind!=='video'&&b.ID===previous))$('boardSelect').value=previous;renderPads();renderSamplerLibrary();if(patchGraph)renderPatch();
 }
 function clipKeys(sound){return sound.Hotkeys??(sound.Hotkey?[sound.Hotkey]:[]);}
 function clipMIDIs(sound){return sound.MIDIs??(sound.MIDI?[sound.MIDI]:[]);}
@@ -156,14 +156,17 @@ function updatePlayback(items){
  playingSounds=new Map();
  for(const item of items){const previous=playingSounds.get(item.ID);if(!previous||item.Sequence>previous.Sequence)playingSounds.set(item.ID,item);}
  for(const [id,v] of padViews){const item=playingSounds.get(id),on=!!item,p=on?Math.max(0,Math.min(1,item.Progress)):0;v.pad.classList.toggle('is-playing',on);v.fill.style.width=(p*100)+'%';v.playIcon.textContent=on?'■':'▶';v.time.textContent=on?item.Remaining.toFixed(1)+'s left':v.sound.Seconds.toFixed(1)+'s';for(const stop of v.stops)stop.setAttribute('offset',(p*100)+'%');}
+ updateSamplerPlayback(items);
 }
 $('boardSelect').onchange=async()=>{renderPads();await save();};
 let deletingBoardID=null;
-$('deleteBoard').onclick=()=>{
- const board=library.Boards.find(b=>b.ID===$('boardSelect').value);if(!board)return;
+function requestBoardDeletion(id){
+ const board=library.Boards.find(b=>b.ID===id);if(!board)return;
  deletingBoardID=board.ID;$('deleteBoardDescription').textContent='Delete “'+board.Name+'” and its '+board.Sounds.length+' sound'+(board.Sounds.length===1?'':'s')+'?';
  $('deleteBoardStatus').textContent='';$('confirmDeleteBoard').disabled=false;document.querySelector('.board-menu').open=false;$('deleteBoardDialog').showModal();$('cancelDeleteBoard').focus();
-};
+}
+$('deleteBoard').onclick=()=>requestBoardDeletion($('boardSelect').value);
+$('samplerDeleteBoard').onclick=()=>requestBoardDeletion($('samplerBoard').value);
 function cancelBoardDeletion(){$('deleteBoardDialog').close();deletingBoardID=null;}
 $('closeDeleteBoard').onclick=cancelBoardDeletion;$('cancelDeleteBoard').onclick=cancelBoardDeletion;
 $('confirmDeleteBoard').onclick=async()=>{
@@ -193,7 +196,7 @@ async function init(){
   $('master').value=Math.round((o.Volume??1)*100);$('boardVolume').value=Math.round((o.BoardVolume??1)*100);$('monitorMic').checked=!!(o.MonitorMic||o.Enabled);$('autoListen').checked=preferences.AutoListen??true;$('globalKeys').checked=preferences.GlobalKeys??true;
   loadFilterModels(preferences);await refreshMIDI(preferences.MIDIInput||'');updateLabels();
   const missing=fillDevices(await nativeDevices(),preferences);
-  library=await nativeLibrary();renderLibrary(preferences.BoardID);initPatch(preferences);await nativeConfigure(options());ready=true;wantListening=$('autoListen').checked;$('pause').disabled=false;
+  library=await nativeLibrary();await initSampler(preferences);renderLibrary(preferences.BoardID);initPatch(preferences);await nativeConfigure(options());ready=true;wantListening=$('autoListen').checked;$('pause').disabled=false;
   if(missing){setLive(false);openTab('settings');message('A saved device is missing. Select a replacement to switch automatically.');}
   else if(wantListening){await start();if(!preferences.Saved)await save();}
   else{setLive(false);message('Automatic listening is off. Resume when ready.');}

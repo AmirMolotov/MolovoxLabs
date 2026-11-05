@@ -12,7 +12,7 @@ import (
 )
 
 func chooseAudioExportFile(owner uintptr, name, extension string) (string, error) {
-	if extension != ".wav" && extension != ".mp3" {
+	if extension != ".wav" && extension != ".mp3" && extension != ".webm" {
 		return "", errors.New("Unsupported audio file type")
 	}
 	name = strings.Map(func(r rune) rune {
@@ -21,14 +21,18 @@ func chooseAudioExportFile(owner uintptr, name, extension string) (string, error
 		}
 		return r
 	}, name)
-	description, _ := windows.UTF16FromString("Audio file (*" + extension + ")")
+	kind, titleText := "Audio file", "Export original audio"
+	if extension == ".webm" {
+		kind, titleText = "Video recording", "Save sampler recording"
+	}
+	description, _ := windows.UTF16FromString(kind + " (*" + extension + ")")
 	pattern, _ := windows.UTF16FromString("*" + extension)
 	filter := append(description, pattern...)
 	filter = append(filter, 0)
 	file := make([]uint16, 32768)
 	initial, _ := windows.UTF16FromString(name + extension)
 	copy(file, initial)
-	title, _ := windows.UTF16PtrFromString("Export original audio")
+	title, _ := windows.UTF16PtrFromString(titleText)
 	ext, _ := windows.UTF16PtrFromString(strings.TrimPrefix(extension, "."))
 	args := openFileName{Owner: owner, Filter: &filter[0], File: &file[0], MaxFile: uint32(len(file)), Title: title, DefaultExtension: ext, Flags: 0x800 | 0x80000 | 8 | 2}
 	args.Size = uint32(unsafe.Sizeof(args))

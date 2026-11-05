@@ -31,6 +31,7 @@ type Preferences struct {
 	GlobalKeys       bool
 	MIDIInput        string
 	BoardID          string
+	SamplerBoardID   string
 	Saved            bool
 	AutoListen       bool
 	Inputs           []InputSelection
@@ -38,6 +39,7 @@ type Preferences struct {
 	Options          AudioOptions
 }
 type SoundEntry struct {
+	Video    *VideoSample `json:",omitempty"`
 	Hotkeys  []KeyBinding
 	MIDIs    []MIDIBinding
 	Waveform []float32
@@ -49,6 +51,7 @@ type SoundEntry struct {
 	Seconds  float64
 }
 type SoundBoard struct {
+	Kind   string `json:",omitempty"`
 	ID     string
 	Name   string
 	Sounds []SoundEntry
@@ -167,7 +170,13 @@ func (s *appStore) CreateBoard(name string) (libraryState, error) {
 	if name == "" || len(name) > 80 {
 		return l, errors.New("Enter a board name (up to 80 characters)")
 	}
-	if len(l.Boards) >= 20 {
+	count := 0
+	for _, b := range l.Boards {
+		if b.Kind != "video" {
+			count++
+		}
+	}
+	if count >= 20 {
 		return l, errors.New("Maximum 20 soundboards")
 	}
 	l.Boards = append(l.Boards, SoundBoard{ID: newID(), Name: name, Sounds: []SoundEntry{}})
@@ -312,6 +321,16 @@ func (s *appStore) Sound(id string) ([]float32, error) {
 		}
 	}
 	return nil, errors.New("Sound not found")
+}
+func (s *appStore) SoundFile(file string) ([]float32, error) {
+	if file == "" || file == "." || file == ".." || filepath.IsAbs(file) || filepath.Base(file) != file {
+		return nil, errors.New("Invalid sound file")
+	}
+	data, err := os.ReadFile(filepath.Join(s.root, "sounds", file))
+	if err != nil {
+		return nil, err
+	}
+	return decodeSound(data, filepath.Ext(file))
 }
 func (s *appStore) RemoveSound(id string) (libraryState, error) {
 	s.mu.Lock()

@@ -10,6 +10,20 @@ Choose a board, then Add sound to copy WAV or MP3 clips into your local library.
 
 Board options exports/imports `.qlboard` packages containing the original audio files and assignments. Individual source audio can also be exported from a sound's shortcut editor. Delete this board asks for confirmation, removes copied audio and shortcuts, and stops its clips. Original files, exports and audio shared with another board are preserved. Deleting the last board creates a new empty board.
 
+## Video sampler
+
+The Video sampler tab has a Clip editor, Video pads, and Recordings.
+
+Import a local MP4, WebM, MOV or M4V source video (up to 200 MB). Source videos are kept in the app's library. Use the playhead and Set in / Set out controls to choose a 0.05–120 second sample. Drag/resize the crop box or enter crop percentages. Name it, then Add sample to this board. Video/audio codecs must be supported by WebView2; H.264/AAC MP4 and VP8/Opus WebM are typical compatible inputs. Audio extraction currently supports source videos up to ten minutes. Silent video can be sampled without decoding an audio track.
+
+Video pads show thumbnails, live video and progress. The latest triggered video appears on the performance stage; audio from all playing samples mixes together. Keyboard/MIDI assignments work for the selected video board alongside the selected audio soundboard. Audio is trimmed to mono 48 kHz WAV and played through the native engine, so device choices, volume and Patch bay effects also apply to video samples. Video elements stay muted to prevent duplicate browser audio. Source/crop references preserve the original video; removing a pad does not delete its source.
+
+On Video pads, choose the native output mix to record, optionally name the performance, and press Record performance. Stop and save writes a WebM recording containing the video stage and that output's processed audio, including routed microphones, soundboards and effects. Recording is limited to 15 minutes / 500 MB. Use Recordings to preview, Save as, or Make samples from a saved performance. Recordings use streamed chunks rather than keeping a full performance in memory. Interrupted recordings with saved chunks are recovered on the next launch.
+
+This records the sampler performance, not the desktop or webcam. Existing .qlboard packages export audio boards; video sampler boards currently depend on the local source library. Export video content by recording a performance. Sources and recordings are stored under %APPDATA%/QuietLab/sampler. All HTTP media/upload routes are restricted to the current local app session and same-origin writes.
+
+Browser checks in tests/browser/sampler-smoke.html verify real PCM worklet audio, WebM encoding, video/audio decoding and cropped thumbnails. Run its small localhost server for the interactive check. Native tests verify stored sample ranges/crops, media range requests, upload boundaries, selected post-effect audio capture, recordings, recovery and shortcut scope.
+
 ## Effects
 
 Select a built-in effect from the dropdown to add it immediately. Effects include gain, high-pass, low-pass, gate, compressor, pitch, noise reduction, added white noise, reverb, echo, chorus, distortion and robot. Define up to eight effect instances, reorder them, adjust their settings, and assign keyboard/MIDI toggles to individual effects, groups or the entire effect chain.

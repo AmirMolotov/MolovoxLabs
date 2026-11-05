@@ -179,6 +179,7 @@ type renderEndpoint struct {
 	toneLeft  int
 }
 type nativeEngine struct {
+	samplerTap     atomic.Pointer[samplerAudioTap]
 	configMu       sync.Mutex
 	vst            vstRack
 	outputCount    atomic.Int32
@@ -405,6 +406,14 @@ func (e *nativeEngine) render(r *renderEndpoint, output []byte, frames int, prim
 		r.toneLeft = 24000
 	}
 	sounds := e.voices.Load()
+	tap := e.samplerTap.Load()
+	if tap != nil && tap.OutputID != r.ID {
+		tap = nil
+	}
+	tapAt := uint64(0)
+	if tap != nil {
+		tapAt = tap.write.Load()
+	}
 	var inputSum, outputSum float64
 	missing := false
 	for frame := 0; frame < frames; frame++ {
@@ -453,6 +462,9 @@ func (e *nativeEngine) render(r *renderEndpoint, output []byte, frames int, prim
 			y = float32(math.Max(-.999, math.Min(.999, float64(y))))
 		}
 		inputSum += float64(x * x)
+		if tap != nil {
+			tap.data[(tapAt+uint64(frame))%captureRingSize].Store(math.Float32bits(y))
+		}
 		outputSum += float64(y * y)
 		at := frame * 8
 		if at+8 <= len(output) {
@@ -464,6 +476,9 @@ func (e *nativeEngine) render(r *renderEndpoint, output []byte, frames int, prim
 			e.micScope[frame].Store(math.Float32bits(x))
 			e.outScope[frame].Store(math.Float32bits(y))
 		}
+	}
+	if tap != nil {
+		tap.write.Store(tapAt + uint64(frames))
 	}
 	if primary {
 		e.renderedFrames.Add(uint64(frames))
@@ -477,6 +492,7 @@ func (e *nativeEngine) render(r *renderEndpoint, output []byte, frames int, prim
 	}
 }
 func (e *nativeEngine) stopLocked() {
+	e.samplerTap.Store(nil)
 	e.closing.Store(true)
 	e.voices.Store(nil)
 	e.running.Store(false)

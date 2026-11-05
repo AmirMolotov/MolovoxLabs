@@ -341,23 +341,43 @@ type triggerStatus struct {
 type triggerMap struct {
 	MIDI   map[string]string
 	Sounds map[string]bool
+	Media  map[string]triggerMedia
 }
+type triggerMedia struct{ BoardID, File string }
 
 func activeTriggerLibrary(l libraryState, p Preferences) libraryState {
 	id := p.BoardID
 	found := false
 	for _, b := range l.Boards {
-		if b.ID == id {
+		if b.ID == id && b.Kind != "video" {
 			found = true
 			break
 		}
 	}
-	if !found && len(l.Boards) > 0 {
-		id = l.Boards[0].ID
+	if !found {
+		for _, b := range l.Boards {
+			if b.Kind != "video" {
+				id = b.ID
+				break
+			}
+		}
 	}
 	selected := libraryState{}
 	for _, b := range l.Boards {
 		if b.ID == id {
+			selected.Boards = append(selected.Boards, b)
+			break
+		}
+	}
+	videoID := p.SamplerBoardID
+	for _, b := range l.Boards {
+		if b.Kind == "video" && b.ID == videoID {
+			selected.Boards = append(selected.Boards, b)
+			return triggerLibrary(selected, p)
+		}
+	}
+	for _, b := range l.Boards {
+		if b.Kind == "video" {
 			selected.Boards = append(selected.Boards, b)
 			break
 		}
@@ -368,6 +388,7 @@ func activeTriggerLibrary(l libraryState, p Preferences) libraryState {
 type triggerService struct {
 	filterRevision atomic.Uint64
 	FilterChanged  func(Preferences)
+	SoundPlayed    func(string)
 	suspended      atomic.Bool
 	store          *appStore
 	engine         *nativeEngine
@@ -405,11 +426,12 @@ func (t *triggerService) Configure(p Preferences) error {
 		return err
 	}
 	l = activeTriggerLibrary(l, p)
-	mapping := &triggerMap{MIDI: map[string]string{}, Sounds: map[string]bool{}}
+	mapping := &triggerMap{MIDI: map[string]string{}, Sounds: map[string]bool{}, Media: map[string]triggerMedia{}}
 	for _, b := range l.Boards {
 		for _, s := range b.Sounds {
 			if !strings.HasPrefix(s.ID, "@") {
 				mapping.Sounds[s.ID] = true
+				mapping.Media[s.ID] = triggerMedia{BoardID: b.ID, File: s.File}
 			}
 			for _, m := range soundMIDIs(s) {
 				mapping.MIDI[midiKey(m)] = s.ID
@@ -426,6 +448,27 @@ func (t *triggerService) Play(id string) error {
 	// Decode outside audio callbacks; cache up to eight recently used sounds.
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if mapping := t.maps.Load(); mapping != nil {
+		if media, ok := mapping.Media[id]; ok {
+			samples := t.cache[id]
+			if samples == nil {
+				var err error
+				samples, err = t.store.SoundFile(media.File)
+				if err != nil {
+					return err
+				}
+				if len(t.cache) >= 8 {
+					t.cache = map[string][]float32{}
+				}
+				t.cache[id] = samples
+			}
+			err := t.engine.PlaySound(id, samples, media.BoardID)
+			if err == nil && t.SoundPlayed != nil {
+				t.SoundPlayed(id)
+			}
+			return err
+		}
+	}
 	samples := t.cache[id]
 	if samples == nil {
 		var err error
@@ -445,7 +488,11 @@ func (t *triggerService) Play(id string) error {
 	for _, board := range l.Boards {
 		for _, sound := range board.Sounds {
 			if sound.ID == id {
-				return t.engine.PlaySound(id, samples, board.ID)
+				err := t.engine.PlaySound(id, samples, board.ID)
+				if err == nil && t.SoundPlayed != nil {
+					t.SoundPlayed(id)
+				}
+				return err
 			}
 		}
 	}

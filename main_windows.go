@@ -105,6 +105,13 @@ func main() {
 		appRoot = *dataRoot
 	}
 	profile := filepath.Join(appRoot, "WebView2")
+	store := &appStore{root: appRoot}
+	engine := &nativeEngine{}
+	recorder := &samplerRecorder{store: store}
+	if err := recorder.recoverPending(); err != nil {
+		log.Print("Sampler recording recovery: ", err)
+	}
+	defer recorder.close()
 	if err = os.MkdirAll(profile, 0700); err != nil {
 		log.Fatal(err)
 	}
@@ -117,7 +124,8 @@ func main() {
 		log.Fatal(err)
 	}
 	prefix := "/" + hex.EncodeToString(token) + "/"
-	server := &http.Server{Handler: assetHandler(prefix), ReadHeaderTimeout: 5 * time.Second}
+	media := &samplerHTTP{prefix: prefix, store: store, recorder: recorder, engine: engine}
+	server := &http.Server{Handler: media.handler(assetHandler(prefix)), ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			log.Print(err)
@@ -128,9 +136,13 @@ func main() {
 		defer cancel()
 		server.Shutdown(ctx)
 	}()
+	windowTitle := "Quiet Lab — Soundboard Studio"
+	if *dataRoot != "" {
+		windowTitle += " — Test profile"
+	}
 	window := webview.NewWithOptions(webview.WebViewOptions{
 		DataPath: profile, AutoFocus: true,
-		WindowOptions: webview.WindowOptions{Title: "Quiet Lab — Soundboard Studio", Width: 1240, Height: 950, Center: true},
+		WindowOptions: webview.WindowOptions{Title: windowTitle, Width: 1240, Height: 950, Center: true},
 	})
 	if window == nil {
 		log.Fatal("Could not start WebView2. Install Microsoft Edge WebView2 Runtime.")
@@ -139,14 +151,18 @@ func main() {
 	window.SetSize(760, 600, webview.HintMin)
 	setQuietLabIcon(uintptr(window.Window()))
 	window.Init("window.QUIET_DESKTOP=true;window.QUIET_NATIVE=true;")
-	store := &appStore{root: appRoot}
 	scanner := &vstScanner{}
-	engine := &nativeEngine{}
 	defer engine.Close()
 	persistVST := func() error { return store.SaveVSTStates(&engine.vst) }
 	defer persistVST()
 	triggers := newTriggerService(store, engine)
 	defer triggers.Close()
+	triggers.SoundPlayed = func(id string) {
+		data, _ := json.Marshal(id)
+		window.Dispatch(func() {
+			window.Eval("window.dispatchEvent(new CustomEvent('sound-play',{detail:" + string(data) + "}));")
+		})
+	}
 	triggers.FilterChanged = func(p Preferences) {
 		data, _ := json.Marshal(p.Options)
 		window.Dispatch(func() {
@@ -166,13 +182,47 @@ func main() {
 		triggers.status.Message = err.Error()
 		triggers.mu.Unlock()
 	}
+	media.onLibraryChanged = reloadTriggers
 	bindings := map[string]interface{}{
-		"nativeLoadPreferences": store.LoadPreferences,
-		"nativeScanVST":         func(folders []string) error { return scanner.start(store, folders) },
-		"nativeVSTScanStatus":   scanner.snapshot,
-		"nativeLoadVSTPlugins":  store.VSTLibrary,
-		"nativeVSTInfo":         engine.vst.info,
-		"nativeVSTEditor":       engine.vst.editor,
+		"nativeSamplerLibrary":     store.SamplerLibrary,
+		"nativeCreateSamplerBoard": store.CreateSamplerBoard,
+		"nativeImportVideo": func() (VideoSource, error) {
+			path, err := chooseVideoFile(uintptr(window.Window()))
+			if err != nil || path == "" {
+				return VideoSource{}, err
+			}
+			return store.ImportVideo(path)
+		},
+		"nativeBeginSamplerRecording": func(name, output string) (string, error) {
+			id, err := recorder.begin(name)
+			if err != nil {
+				return "", err
+			}
+			if err = engine.beginSamplerTap(id, output); err != nil {
+				recorder.abort(id)
+				return "", err
+			}
+			return id, nil
+		},
+		"nativeFinishSamplerRecording": func(id string, seconds float64) (VideoRecording, error) {
+			engine.endSamplerTap(id)
+			return recorder.finish(id, seconds)
+		},
+		"nativeAbortSamplerRecording": func(id string) { engine.endSamplerTap(id); recorder.abort(id) },
+		"nativeExportSamplerRecording": func(id string) (string, error) {
+			path, err := chooseAudioExportFile(uintptr(window.Window()), "Quiet Lab performance", ".webm")
+			if err != nil || path == "" {
+				return "", err
+			}
+			return path, store.ExportRecording(id, path)
+		},
+		"nativeRecordingAsSource": store.RecordingAsSource,
+		"nativeLoadPreferences":   store.LoadPreferences,
+		"nativeScanVST":           func(folders []string) error { return scanner.start(store, folders) },
+		"nativeVSTScanStatus":     scanner.snapshot,
+		"nativeLoadVSTPlugins":    store.VSTLibrary,
+		"nativeVSTInfo":           engine.vst.info,
+		"nativeVSTEditor":         engine.vst.editor,
 		"nativeVSTParameter": func(id string, param uint32, value float64) error {
 			if err := engine.vst.parameter(id, param, value); err != nil {
 				return err
