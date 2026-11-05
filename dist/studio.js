@@ -25,12 +25,19 @@ function snapshotPreferences(){return {VSTFolders:vstFolders(),Saved:true,AutoLi
 async function save(){
  if(!ready)return false;
  clearTimeout(saveTimer);
- try{const value=snapshotPreferences();await nativeSavePreferences(value);preferences=value;$('saveStatus').textContent='Saved on this computer.';return true;}
+ try{return await queueSettings(()=>withLoading('Saving changes…',async()=>{const value=snapshotPreferences();await nativeSavePreferences(value);preferences=value;$('saveStatus').textContent='Saved on this computer.';return true;}));}
  catch(e){$('saveStatus').textContent='Could not save: '+errorText(e);message(errorText(e));return false;}
 }
 function scheduleSave(){if(!ready)return;clearTimeout(saveTimer);saveTimer=setTimeout(save,180);}
 function updateLabels(){$('masterValue').textContent=$('master').value+'%';$('boardVolumeValue').textContent=$('boardVolume').value+'%';}
-async function configure(){updateLabels();try{await nativeConfigure(options());scheduleSave();refreshVSTCards();if(patchGraph)renderPatch();}catch(e){message(errorText(e));}}
+let configurePending=false,configurePromise=null;
+function configure(){
+ updateLabels();configurePending=true;if(configurePromise)return configurePromise;
+ configurePromise=queueSettings(()=>withLoading('Applying effects and routing…',async()=>{
+  try{do{configurePending=false;await nativeConfigure(options());}while(configurePending);scheduleSave();refreshVSTCards();if(patchGraph)renderPatch();return true;}
+  catch(e){message(errorText(e));return false;}
+ })).finally(()=>{configurePromise=null;});return configurePromise;
+}
 ['master','boardVolume'].forEach(id=>$(id).oninput=configure);
 $('monitorMic').onchange=configure;
 $('autoListen').onchange=save;
@@ -75,7 +82,7 @@ function fillDevices(list,prefs){
 }
 async function stop(reason='Listening paused. Devices released.'){
  if(busy)return;busy=true;$('pause').disabled=true;
- try{await nativeStop();clearInterval(pollTimer);pollTimer=null;setLive(false);idle();updatePlayback([]);$('inputDB').textContent=$('outputDB').textContent='— dBFS';message(reason);}
+ try{await queueSettings(()=>withLoading('Pausing audio…',()=>nativeStop()));clearInterval(pollTimer);pollTimer=null;setLive(false);idle();updatePlayback([]);$('inputDB').textContent=$('outputDB').textContent='— dBFS';message(reason);}
  catch(e){message(errorText(e));}finally{busy=false;$('pause').disabled=false;}
 }
 async function start(){
@@ -83,7 +90,7 @@ async function start(){
  wantListening=true;
  const s=selections();if(!s.Inputs.length||!s.Outputs.length){setLive(false);message('Select a microphone and an output in Settings.');return false;}
  busy=true;$('pause').disabled=true;
- try{await nativeStart({...s,Options:options()});busy=false;setLive(true);clearInterval(pollTimer);pollTimer=setInterval(poll,66);await poll();message('Listening. Device changes apply automatically.');return true;}
+ try{await queueSettings(()=>withLoading('Opening audio devices…',()=>nativeStart({...selections(),Options:options()}),true));busy=false;setLive(true);clearInterval(pollTimer);pollTimer=setInterval(poll,66);await poll();message('Listening. Device changes apply automatically.');return true;}
  catch(e){busy=false;setLive(false);message(errorText(e));return false;}
  finally{busy=false;$('pause').disabled=false;}
 }
@@ -106,7 +113,7 @@ async function applyRouting(){
  try{do{routeDirty=false;await save();if(wantListening){if(active)await stop('Switching devices…');const s=selections();if(s.Inputs.length&&s.Outputs.length)await start();else message('Select a microphone and output to resume listening.');}}while(routeDirty);}
  finally{routeApplying=false;}
 }
-$('refresh').onclick=async()=>{try{fillDevices(await nativeDevices(),snapshotPreferences());deviceChoiceChanged();}catch(e){message(errorText(e));}};
+$('refresh').onclick=async()=>{try{fillDevices(await withLoading('Finding audio devices…',()=>nativeDevices()),snapshotPreferences());deviceChoiceChanged();}catch(e){message(errorText(e));}};
 $('testTone').onclick=async()=>{if(!active&&!await start())return;try{await nativeTone();message('Playing a quiet test tone.');}catch(e){message(errorText(e));}};
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!busy&&!document.querySelector('dialog[open]')){wantListening=false;nativeStopSounds().catch(()=>{});stop();}});
 window.addEventListener('resize',()=>{if(!active)idle();});
@@ -140,7 +147,7 @@ function renderPads(){
   const bottom=document.createElement('div');bottom.className='sound-pad-bottom';const edit=document.createElement('button');edit.className='pad-edit';const keys=clipKeys(sound),midis=clipMIDIs(sound);
   edit.textContent=keys.length||midis.length?'⌨ '+keys.length+' · MIDI '+midis.length:'⌨ Add triggers';edit.setAttribute('aria-label','Edit triggers for '+sound.Name);edit.onclick=()=>openTriggerEditor(sound.ID);
   const time=document.createElement('span');time.className='clip-time';time.textContent=sound.Seconds.toFixed(1)+'s';bottom.append(edit,time);pad.append(bottom);
-  play.onclick=async()=>{if(playingSounds.has(sound.ID)){await nativeStopSound(sound.ID);return;}if(!active&&!await start())return;play.disabled=true;try{await nativePlaySound(sound.ID);$('boardStatus').textContent='Playing '+sound.Name+'.';}catch(e){message(errorText(e));}finally{play.disabled=false;}};
+  play.onclick=async()=>{if(playingSounds.has(sound.ID)){await nativeStopSound(sound.ID);return;}if(!active&&!await start())return;play.disabled=true;try{await withLoading('Loading sound…',()=>nativePlaySound(sound.ID));$('boardStatus').textContent='Playing '+sound.Name+'.';}catch(e){message(errorText(e));}finally{play.disabled=false;}};
   padViews.set(sound.ID,{pad,fill,playIcon,time,stops:[stop1,stop2],sound});$('soundPads').append(pad);
  }
  updatePlayback([...playingSounds.values()]);
@@ -161,25 +168,27 @@ function cancelBoardDeletion(){$('deleteBoardDialog').close();deletingBoardID=nu
 $('closeDeleteBoard').onclick=cancelBoardDeletion;$('cancelDeleteBoard').onclick=cancelBoardDeletion;
 $('confirmDeleteBoard').onclick=async()=>{
  if(!deletingBoardID)return;const id=deletingBoardID,index=library.Boards.findIndex(b=>b.ID===id);$('confirmDeleteBoard').disabled=true;
- try{clearTimeout(saveTimer);const result=await nativeRemoveBoard(id);library=result.Library;renderLibrary(library.Boards[Math.min(Math.max(index,0),library.Boards.length-1)]?.ID);await save();cancelBoardDeletion();$('boardStatus').textContent='Soundboard deleted.'+((result.Warnings||[]).length?' '+result.Warnings.join(' '):'');}
+ try{clearTimeout(saveTimer);const result=await withLoading('Deleting soundboard…',()=>nativeRemoveBoard(id),true);library=result.Library;renderLibrary(library.Boards[Math.min(Math.max(index,0),library.Boards.length-1)]?.ID);await save();cancelBoardDeletion();$('boardStatus').textContent='Soundboard deleted.'+((result.Warnings||[]).length?' '+result.Warnings.join(' '):'');}
  catch(e){$('deleteBoardStatus').textContent=errorText(e);}
  finally{$('confirmDeleteBoard').disabled=false;}
 };
 
 $('createBoard').onclick=async()=>{try{library=await nativeCreateBoard($('boardName').value);$('boardName').value='';renderLibrary(library.Boards.at(-1).ID);await save();}catch(e){message(errorText(e));}};
-$('importSound').onclick=async()=>{$('importSound').disabled=true;try{library=await nativeImportSound($('boardSelect').value);renderPads();$('boardStatus').textContent='Audio copied into your library.';}catch(e){message(errorText(e));}finally{$('importSound').disabled=false;}};
+$('importSound').onclick=async()=>{$('importSound').disabled=true;try{library=await withLoading('Adding audio to your soundboard…',()=>nativeImportSound($('boardSelect').value),true);renderPads();$('boardStatus').textContent='Audio copied into your library.';}catch(e){message(errorText(e));}finally{$('importSound').disabled=false;}};
 $('stopSounds').onclick=async()=>{await nativeStopSounds();updatePlayback([]);$('boardStatus').textContent='All sounds stopped.';};
-$('exportBoard').onclick=async()=>{try{const path=await nativeExportBoard($('boardSelect').value);if(path)$('boardStatus').textContent='Exported board, original audio files and all trigger assignments in one .qlboard package.';}catch(e){message(errorText(e));}};
+$('exportBoard').onclick=async()=>{try{const path=await withLoading('Exporting soundboard and audio…',()=>nativeExportBoard($('boardSelect').value),true);if(path)$('boardStatus').textContent='Exported board, original audio files and all trigger assignments in one .qlboard package.';}catch(e){message(errorText(e));}};
 $('importBoard').onclick=async()=>{
  $('importBoard').disabled=true;
- try{const count=library.Boards.length,id=$('boardSelect').value;library=await nativeImportBoard();renderLibrary(library.Boards.length>count?library.Boards.at(-1)?.ID:id);await save();$('boardStatus').textContent='Board and embedded audio imported. Conflicting triggers remain unassigned.';}
+ try{const count=library.Boards.length,id=$('boardSelect').value;library=await withLoading('Importing soundboard and audio…',()=>nativeImportBoard(),true);renderLibrary(library.Boards.length>count?library.Boards.at(-1)?.ID:id);await save();$('boardStatus').textContent='Board and embedded audio imported. Conflicting triggers remain unassigned.';}
  catch(e){message(errorText(e));}finally{$('importBoard').disabled=false;}
 };
 function loadFilterModels(p){
  micFilters=p.Options?.Filters||[];filterGroups=p.FilterGroups||[];allFilterHotkeys=p.AllFilterHotkeys||[];allFilterMIDIs=p.AllFilterMIDIs||[];bypassFilters=!!p.Options?.BypassFilters;renderFilters();renderGroups();
 }
 async function init(){
+ const finishLoading=beginLoading('Opening your audio workspace…',true);
  try{
+  await paintLoading();
   preferences=await nativeLoadPreferences();await initVST(preferences);const o=preferences.Options||{};
   $('master').value=Math.round((o.Volume??1)*100);$('boardVolume').value=Math.round((o.BoardVolume??1)*100);$('monitorMic').checked=!!(o.MonitorMic||o.Enabled);$('autoListen').checked=preferences.AutoListen??true;$('globalKeys').checked=preferences.GlobalKeys??true;
   loadFilterModels(preferences);await refreshMIDI(preferences.MIDIInput||'');updateLabels();
@@ -189,5 +198,6 @@ async function init(){
   else if(wantListening){await start();if(!preferences.Saved)await save();}
   else{setLive(false);message('Automatic listening is off. Resume when ready.');}
  }catch(e){setLive(false);message('Could not open Studio: '+errorText(e));}
+ finally{finishLoading();}
  idle();
 }

@@ -13,6 +13,8 @@ type PatchNode struct {
 }
 type PatchCable struct{ From, To string }
 type PatchBay struct {
+	Version int
+	Preset  string
 	Enabled bool
 	Nodes   []PatchNode
 	Cables  []PatchCable

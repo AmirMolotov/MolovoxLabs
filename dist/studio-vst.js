@@ -11,21 +11,21 @@ function showVSTCatalog(result){
 }
 async function initVST(p){$('vstFolders').value=(p.VSTFolders||[]).join('\n');try{showVSTCatalog(await nativeLoadVSTPlugins());}catch(e){$('vstScanStatus').textContent=errorText(e);}}
 $('scanVST').onclick=async()=>{
- $('scanVST').disabled=true;$('vstScanStatus').textContent='Scanning installed VST3 effects… Each plugin is checked in a separate process.';
- try{await save();await nativeScanVST(vstFolders());let scan;do{await new Promise(resolve=>setTimeout(resolve,250));scan=await nativeVSTScanStatus();}while(scan.Running);showVSTCatalog(scan.Result);}catch(e){$('vstScanStatus').textContent=errorText(e);}finally{$('scanVST').disabled=false;}
+ const finishLoading=beginLoading('Scanning VST3 plugins…');$('scanVST').disabled=true;$('vstScanStatus').textContent='Scanning installed VST3 effects… Each plugin is checked in a separate process.';
+ try{await paintLoading();await save();await nativeScanVST(vstFolders());let scan;do{await new Promise(resolve=>setTimeout(resolve,250));scan=await nativeVSTScanStatus();}while(scan.Running);showVSTCatalog(scan.Result);}catch(e){$('vstScanStatus').textContent=errorText(e);}finally{$('scanVST').disabled=false;finishLoading();}
 };
 $('vstFolders').onchange=save;
 $('vstSelect').onchange=async()=>{
  const index=$('vstSelect').value;$('vstSelect').value='';const plugin=vstCatalog[Number(index)];if(index===''||!plugin)return;
  if(micFilters.length>=8){message('Maximum eight microphone filters.');return;}
  const filter={ID:crypto.randomUUID(),Kind:'vst3',Enabled:true,Hotkeys:[],MIDIs:[],PluginPath:plugin.Path,ClassID:plugin.ClassID,PluginName:plugin.Name,VSTState:''};
- micFilters.push(filter);renderFilters();renderGroups();await configure();await save();refreshVSTCards();
+ await withLoading('Loading '+plugin.Name+'…',async()=>{micFilters.push(filter);renderFilters();renderGroups();await configure();await save();refreshVSTCards();},true);
 };
 function renderVSTFilter(filter,controls){
  const box=document.createElement('div');box.className='vst-filter';box.dataset.vstId=filter.ID;
  const label=document.createElement('p');label.className='hint';label.dataset.vstStatus='';label.textContent='Checking plugin…';
  const row=document.createElement('div');row.className='vst-buttons';
- const editor=document.createElement('button');editor.className='secondary';editor.textContent='Open plugin editor';editor.onclick=async()=>{try{await save();await nativeVSTEditor(filter.ID);}catch(e){label.textContent=errorText(e);}};
+ const editor=document.createElement('button');editor.className='secondary';editor.textContent='Open plugin editor';editor.onclick=async()=>{try{await save();await withLoading('Opening plugin editor…',()=>nativeVSTEditor(filter.ID),true);}catch(e){label.textContent=errorText(e);}};
  const params=document.createElement('button');params.className='secondary';params.textContent='Parameters';params.onclick=()=>openVSTParameters(filter);
  row.append(editor,params);box.append(row,label);controls.append(box);
  queueMicrotask(()=>refreshVSTCard(filter,box));
@@ -38,7 +38,7 @@ async function refreshVSTCard(filter,box){
 }
 function refreshVSTCards(){for(const box of document.querySelectorAll('[data-vst-id]')){const filter=micFilters.find(f=>f.ID===box.dataset.vstId);if(filter)refreshVSTCard(filter,box);}}
 async function openVSTParameters(filter){
- try{await save();const info=await nativeVSTInfo(filter.ID);if(info.Error)throw new Error(info.Error);vstEditorID=filter.ID;vstParameters=(info.Parameters||[]).filter(p=>!p.Hidden);$('vstTitle').textContent=filter.PluginName;$('vstSearch').value='';renderVSTParameters();$('vstDialog').showModal();}catch(e){message(errorText(e));}
+ try{await save();const info=await withLoading('Loading plugin parameters…',()=>nativeVSTInfo(filter.ID),true);if(info.Error)throw new Error(info.Error);vstEditorID=filter.ID;vstParameters=(info.Parameters||[]).filter(p=>!p.Hidden);$('vstTitle').textContent=filter.PluginName;$('vstSearch').value='';renderVSTParameters();$('vstDialog').showModal();}catch(e){message(errorText(e));}
 }
 function renderVSTParameters(){
  const search=$('vstSearch').value.toLowerCase(),list=vstParameters.filter(p=>p.Name.toLowerCase().includes(search));$('vstParamList').replaceChildren();

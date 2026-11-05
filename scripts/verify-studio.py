@@ -3,7 +3,7 @@ from html.parser import HTMLParser
 import re
 root=Path(__file__).resolve().parent.parent
 html=(root/"dist/studio.html").read_text(encoding="utf-8-sig")
-js="\n".join((root/p).read_text(encoding="utf-8-sig") for p in ("dist/studio.js","dist/studio-controls.js","dist/studio-vst.js","dist/studio-patch.js"))
+js="\n".join((root/p).read_text(encoding="utf-8-sig") for p in ("dist/studio.js","dist/studio-controls.js","dist/studio-vst.js","dist/studio-patch.js","dist/studio-loading.js"))
 ids=re.findall(r'id="([^"]+)"',html)
 assert len(ids)==len(set(ids)), "Duplicate UI identifiers"
 refs=set(re.findall(r"\$\('([^']+)'\)",js))

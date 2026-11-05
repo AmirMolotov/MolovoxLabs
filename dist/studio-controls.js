@@ -121,9 +121,9 @@ document.addEventListener('keydown',async event=>{
  pendingKey=false;$('cancelLearn').hidden=true;
  try{await nativeSuspendShortcuts(false);const target=targetData();if(target)await commitTarget([...target.Keys,key],target.MIDIs);}catch(e){$('triggerStatus').textContent=errorText(e);}
 },true);
-$('exportAudio').onclick=async()=>{try{const target=targetData();if(target?.Sound){const path=await nativeExportAudio(target.Sound.ID);if(path)$('triggerStatus').textContent='Original '+target.Sound.File.split('.').pop().toUpperCase()+' audio exported.';}}catch(e){$('triggerStatus').textContent=errorText(e);}};
+$('exportAudio').onclick=async()=>{try{const target=targetData();if(target?.Sound){const path=await withLoading('Exporting original audio…',()=>nativeExportAudio(target.Sound.ID),true);if(path)$('triggerStatus').textContent='Original '+target.Sound.File.split('.').pop().toUpperCase()+' audio exported.';}}catch(e){$('triggerStatus').textContent=errorText(e);}};
 async function refreshMIDI(preferred){
- const selected=preferred??$('midiInput').value,list=await nativeMIDIDevices();$('midiInput').replaceChildren(new Option('Off',''));
+ const selected=preferred??$('midiInput').value,list=await withLoading('Finding MIDI devices…',()=>nativeMIDIDevices());$('midiInput').replaceChildren(new Option('Off',''));
  for(const d of list)$('midiInput').add(new Option(d.Name,d.Name));if(selected&&!list.some(d=>d.Name===selected))$('midiInput').add(new Option(selected+' (disconnected)',selected));$('midiInput').value=selected||'';
 }
 $('refreshMIDI').onclick=()=>refreshMIDI().catch(e=>message(errorText(e)));

@@ -1,5 +1,7 @@
 # Quiet Lab
 
+Built by **Molotov**.
+
 Open **QuietLab.exe** in this folder. It is the only application executable. No login or Docker is required. Windows x64 and Microsoft Edge WebView2 Runtime are required. WASAPI capture, mixing, built-in effects, global shortcuts and MIDI run in Go. VST3 effects use the embedded native host; WebView2 displays the interface.
 
 ## Soundboards
@@ -22,6 +24,8 @@ Use the **Patch bay** tab to connect sources, effect instances and outputs with 
 2. Select **Soundboards → effects** for a ready-to-use layout, or enable **Use patch bay routing** and add nodes yourself.
 3. Drag a right-hand output socket to a left-hand input socket. Clicking the two sockets also connects them; keyboard users can activate the sockets in sequence.
 4. Click a cable to unplug it. Drag node headers to arrange the rack. Node positions and cables are remembered automatically.
+
+Quick Start layouts stay linked to the Effects library: adding, removing or reordering effects updates the active layout automatically. Manual cable/node edits switch to a custom layout, which is preserved. Older recognizable Quick Start layouts are migrated automatically.
 
 Sources can be the microphone mix, all soundboards, or a particular board. Output nodes can feed all selected devices or one specific selected device, such as CABLE Input or monitoring headphones. Select physical devices in Settings first. Multiple cables into an effect sum their sources. An effect's output can branch to multiple destinations. Each effect instance is placed once; create another definition if independent processing is needed.
 
@@ -50,3 +54,5 @@ Build with **scripts/build-windows.ps1**. It builds native dependencies and the 
 Source, icon assets, the icon resource and the embedded bridge DLL are tracked in Git; application executables, test output, user data, generated compiler intermediates and old packages are ignored. The Steinberg VST3 interface sources and MIT license are vendored in third_party/vst3/pluginterfaces. Dependency notices are in THIRD-PARTY-NOTICES.txt.
 
 Checks cover native filters, graph routing/fan-in/fan-out, soundboard effects, feedback rejection, saved layouts, waveform progress, board archive audio, deletion boundaries, trigger scope, UI selection/routing behavior and native VST3 processing/state restoration. The installed SerumFX plugin was also checked for audio processing, parameter discovery, state saving and opening its native editor. Physical MIDI-controller operation still needs hardware verification.
+
+Loading feedback: startup and blocking audio/file/plugin operations show a branded loading screen before work begins. Background scanning, saving and audio updates show a persistent activity indicator. Settings requests are serialized and rapid effect/routing edits are coalesced so older updates cannot replace newer choices.

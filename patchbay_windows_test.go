@@ -40,6 +40,8 @@ func TestPatchRoutesBoardThroughEffectsAndKeepsMicrophoneDry(t *testing.T) {
 }
 func TestPatchOutputSelectionFanInAndFanOut(t *testing.T) {
 	graph := boardEffectPatch()
+	graph.Version = 1
+	graph.Preset = "board"
 	graph.Nodes[1].BoardID = ""
 	graph.Nodes[3].DeviceID = "cable"
 	graph.Nodes = append(graph.Nodes, PatchNode{ID: "phones", Kind: "output", DeviceID: "phones"})
@@ -127,7 +129,7 @@ func TestPatchLayoutPersistsInPreferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !p.Options.Patch.Enabled || len(p.Options.Patch.Cables) != 3 || p.Options.Patch.Nodes[1].X != 320 {
+	if !p.Options.Patch.Enabled || p.Options.Patch.Version != 1 || p.Options.Patch.Preset != "board" || len(p.Options.Patch.Cables) != 3 || p.Options.Patch.Nodes[1].X != 320 {
 		t.Fatal("Patch layout not remembered", p.Options.Patch)
 	}
 }
