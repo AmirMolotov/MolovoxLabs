@@ -1,6 +1,6 @@
 'use strict';
-const filterNames={gain:'Gain',highpass:'High-pass',lowpass:'Low-pass',gate:'Noise gate',expander:'Downward expander',compressor:'Compressor',pitch:'Pitch',noise:'Noise reduction',addnoise:'Add noise',reverb:'Reverb',echo:'Echo',chorus:'Chorus',distortion:'Distortion',robot:'Robot'};
-const filterDefaults={gain:{GainDB:0},highpass:{Frequency:80},lowpass:{Frequency:12000},gate:{Threshold:-45},expander:{Threshold:-45,Ratio:2},compressor:{Threshold:-18,Ratio:4},pitch:{Semitones:0},noise:{Strength:75,NoiseDB:-45},addnoise:{NoiseLevelDB:-36},reverb:{Mix:25,RoomSize:55,Damping:45},echo:{Mix:30,DelayMS:300,Feedback:35},chorus:{Mix:40,RateHz:1.2,DepthMS:5},distortion:{Mix:65,DriveDB:18,OutputDB:-12},robot:{Mix:100,Frequency:90}};
+const filterNames={gain:'Gain',eq:'Equalizer',highpass:'High-pass',lowpass:'Low-pass',gate:'Noise gate',expander:'Downward expander',compressor:'Compressor',pitch:'Pitch',noise:'Noise reduction',addnoise:'Add noise',reverb:'Reverb',echo:'Echo',chorus:'Chorus',distortion:'Distortion',robot:'Robot'};
+const filterDefaults={gain:{GainDB:0},eq:{BassDB:0,MidDB:0,TrebleDB:0},highpass:{Frequency:80},lowpass:{Frequency:12000},gate:{Threshold:-45},expander:{Threshold:-45,Ratio:2},compressor:{Threshold:-18,Ratio:4},pitch:{Semitones:0},noise:{Strength:75,NoiseDB:-45},addnoise:{NoiseLevelDB:-36},reverb:{Mix:25,RoomSize:55,Damping:45},echo:{Mix:30,DelayMS:300,Feedback:35},chorus:{Mix:40,RateHz:1.2,DepthMS:5},distortion:{Mix:65,DriveDB:18,OutputDB:-12},robot:{Mix:100,Frequency:90}};
 function renderFilters(){
  $('filtersActive').checked=!bypassFilters;$('filterCards').replaceChildren();
  if(!micFilters.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='No effects yet. Choose an effect above to add its parameters.';$('filterCards').append(empty);}
@@ -44,6 +44,11 @@ function renderEffectParameters(filter,inline=false){
   if(filter.Kind==='addnoise'){range('NoiseLevelDB','White noise level',-80,-6,1,' dB');const hint=document.createElement('p');hint.className='hint';hint.textContent='Mixes white noise into your microphone. Move it before or after other filters to change how they affect the noise.';controls.append(hint);}
   if(filter.Kind==='noise'){range('Strength','Reduction',0,100,1,'%');range('NoiseDB','Background noise level',-80,-15,1,' dB');const hint=document.createElement('p');hint.className='hint';hint.textContent='Raise the background noise level until hiss fades. Lower it if your voice sounds thin. Adds about 11 ms of delay.';controls.append(hint);}
   if(filter.Kind==='pitch')range('Semitones','Pitch',-12,12,.5,' semitones');
+  if(filter.Kind==='eq'){
+   range('BassDB','Bass · 120 Hz',-12,12,.5,' dB');
+   range('MidDB','Mid · 1 kHz',-12,12,.5,' dB');
+   range('TrebleDB','Treble · 8 kHz',-12,12,.5,' dB');
+  }
   if(filter.Kind==='gain')range('GainDB','Gain',-24,24,.5,' dB');
   if(filter.Kind==='highpass')range('Frequency','Cutoff',20,1000,10,' Hz');
   if(filter.Kind==='lowpass')range('Frequency','Cutoff',1000,20000,100,' Hz');

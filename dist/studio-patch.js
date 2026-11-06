@@ -110,10 +110,10 @@ function renderPatch(){
  if(!patchGraph||patchDragging)return;patchOptions();$('patchEnabled').checked=patchGraph.Enabled;
  for(const [id,mode] of [['patchBoardPreset','board'],['patchMicPreset','mic']]){$(id).classList.toggle('is-selected',patchGraph.Preset===mode);$(id).setAttribute('aria-pressed',String(patchGraph.Preset===mode));}
  const source=$('patchSource');source.replaceChildren(new Option('Add a source…',''));source.options[0].disabled=true;source.add(new Option('Microphone mix','mic'));source.add(new Option('All boards + video samplers','board:'));for(const kind of ['audio','video']){const group=document.createElement('optgroup');group.label=kind==='video'?'Video samplers':'Soundboards';for(const b of library.Boards.filter(b=>(b.Kind==='video')===(kind==='video')))group.append(new Option(b.Name,'board:'+b.ID));source.append(group);}for(const board of library.Boards){if(!board.Sounds.length)continue;const group=document.createElement('optgroup');group.label=(board.Kind==='video'?'Video pads · ':'Sound pads · ')+board.Name;for(const sound of board.Sounds)group.append(new Option(sound.Name,'clip:'+sound.ID));source.append(group);}source.value='';
- const effects=$('patchEffect');effects.replaceChildren(new Option('Add an effect…',''));effects.options[0].disabled=true;const used=new Set(patchGraph.Nodes.filter(n=>n.Kind==='effect').map(n=>n.FilterID));for(const f of micFilters)if(!used.has(f.ID))effects.add(new Option(filterTitle(f),f.ID));
- const builtins=document.createElement('optgroup');builtins.label='New effect instance';
- for(const [kind,name] of Object.entries(filterNames))builtins.append(new Option(name,'new:'+kind));
- effects.append(builtins);effects.value='';
+ const effects=$('patchEffect');effects.replaceChildren(new Option('Add an effect…',''));effects.options[0].disabled=true;const used=new Set(patchGraph.Nodes.filter(n=>n.Kind==='effect').map(n=>n.FilterID));
+ for(const [kind,name] of Object.entries(filterNames))effects.add(new Option(name,'new:'+kind));
+ for(const f of micFilters)if(!used.has(f.ID))effects.add(new Option(filterTitle(f)+' (saved)',f.ID));
+ effects.value='';
  const output=$('patchOutput');output.replaceChildren(new Option('Add an output…',''));output.options[0].disabled=true;output.add(new Option('All selected outputs','all'));for(const id of selections().Outputs){const d=devices?.Outputs?.find(d=>d.ID===id);output.add(new Option(d?.Name||'Selected output',id));}output.value='';
  const nodes=$('patchNodes');patchResize?.disconnect();nodes.replaceChildren();
  for(const id of patchExpanded)if(!patchGraph.Nodes.some(n=>n.ID===id))patchExpanded.delete(id);

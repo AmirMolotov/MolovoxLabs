@@ -48,6 +48,43 @@ func TestMicFilters(t *testing.T) {
 		t.Fatal("Unknown filter accepted")
 	}
 }
+func TestEqualizerBandGains(t *testing.T) {
+	filters := []MicFilter{{Kind: "eq", Enabled: true}}
+	var chain micFilterChain
+	if got := chain.sampleAt(.2, filters, 0); got != .2 {
+		t.Fatalf("Flat equalizer changed signal: %g", got)
+	}
+	for _, tc := range []struct{ frequency, gain float64 }{{120, 6}, {1000, -9}, {8000, 12}} {
+		filters[0].BassDB, filters[0].MidDB, filters[0].TrebleDB = 0, 0, 0
+		switch tc.frequency {
+		case 120:
+			filters[0].BassDB = tc.gain
+		case 1000:
+			filters[0].MidDB = tc.gain
+		case 8000:
+			filters[0].TrebleDB = tc.gain
+		}
+		if err := validateFilters(filters); err != nil {
+			t.Fatal(err)
+		}
+		var inputEnergy, outputEnergy float64
+		for i := 0; i < sampleRate; i++ {
+			x := .1 * math.Sin(2*math.Pi*tc.frequency*float64(i)/sampleRate)
+			y := float64(chain.sampleAt(float32(x), filters, 0))
+			if i >= sampleRate/2 {
+				inputEnergy += x * x
+				outputEnergy += y * y
+			}
+		}
+		if got := 10 * math.Log10(outputEnergy/inputEnergy); math.Abs(got-tc.gain) > .01 {
+			t.Errorf("%g Hz: got %g dB, want %g dB", tc.frequency, got, tc.gain)
+		}
+	}
+	filters[0].TrebleDB = 13
+	if validateFilters(filters) == nil {
+		t.Fatal("Accepted equalizer gain above 12 dB")
+	}
+}
 func TestDownwardExpander(t *testing.T) {
 	filters := []MicFilter{{Kind: "expander", Enabled: true, Threshold: -40, Ratio: 2}}
 	if err := validateFilters(filters); err != nil {

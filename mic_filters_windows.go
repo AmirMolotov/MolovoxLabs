@@ -22,6 +22,9 @@ type MicFilter struct {
 	Threshold    float64
 	Ratio        float64
 	GainDB       float64
+	BassDB       float64
+	MidDB        float64
+	TrebleDB     float64
 	Semitones    float64
 	Strength     float64
 	NoiseDB      float64
@@ -41,6 +44,7 @@ type micFilterState struct {
 	previous, high, low, env, gain float64
 	random                         uint32
 	noiseGain                      float64
+	eq                             [3]eqBand
 }
 type micFilterChain struct {
 	vstSlots  [8]*vstUnit
@@ -56,7 +60,7 @@ func validateFilters(filters []MicFilter) error {
 		return errors.New("Maximum eight microphone filters")
 	}
 	for _, f := range filters {
-		for _, v := range []float64{f.Frequency, f.Threshold, f.Ratio, f.GainDB, f.Semitones, f.Strength, f.NoiseDB, f.NoiseLevelDB, f.Mix, f.DelayMS, f.Feedback, f.RoomSize, f.Damping, f.RateHz, f.DepthMS, f.DriveDB, f.OutputDB} {
+		for _, v := range []float64{f.Frequency, f.Threshold, f.Ratio, f.GainDB, f.Semitones, f.Strength, f.NoiseDB, f.NoiseLevelDB, f.Mix, f.DelayMS, f.Feedback, f.RoomSize, f.Damping, f.RateHz, f.DepthMS, f.DriveDB, f.OutputDB, f.BassDB, f.MidDB, f.TrebleDB} {
 			if math.IsNaN(v) || math.IsInf(v, 0) {
 				return errors.New("Invalid microphone filter")
 			}
@@ -116,6 +120,10 @@ func validateFilters(filters []MicFilter) error {
 			if f.Threshold < -90 || f.Threshold > -5 {
 				return errors.New("Gate threshold must be −90 to −5 dB")
 			}
+		case "eq":
+			if math.Abs(f.BassDB) > 12 || math.Abs(f.MidDB) > 12 || math.Abs(f.TrebleDB) > 12 {
+				return errors.New("Equalizer band gains must be −12 to +12 dB")
+			}
 		case "expander":
 			if f.Threshold < -90 || f.Threshold > 0 || f.Ratio < 1 || f.Ratio > 10 {
 				return errors.New("Expander threshold must be −90 to 0 dB and ratio 1:1 to 10:1")
@@ -158,6 +166,9 @@ func (c *micFilterChain) process(input float32, filters []MicFilter, start, end 
 		}
 		if !f.Enabled {
 			c.effects[i].active = false
+			if f.Kind == "eq" {
+				s.eq = [3]eqBand{}
+			}
 			if f.Kind == "expander" {
 				s.env, s.gain = 0, 1
 			}
@@ -255,6 +266,10 @@ func (c *micFilterChain) process(input float32, filters []MicFilter, start, end 
 				reduction = (f.Threshold + (db-f.Threshold)/f.Ratio) - db
 			}
 			x *= math.Pow(10, reduction/20)
+		case "eq":
+			x = s.eq[0].sample(x, 120, f.BassDB)
+			x = s.eq[1].sample(x, 1000, f.MidDB)
+			x = s.eq[2].sample(x, 8000, f.TrebleDB)
 		case "gain":
 			x *= math.Pow(10, f.GainDB/20)
 		}
@@ -263,4 +278,38 @@ func (c *micFilterChain) process(input float32, filters []MicFilter, start, end 
 		return 0
 	}
 	return float32(x)
+}
+
+type eqBand struct {
+	gainDB     float64
+	b0, b1, b2 float64
+	a1, a2     float64
+	z1, z2     float64
+}
+
+func (b *eqBand) sample(x, frequency, gainDB float64) float64 {
+	if gainDB != b.gainDB {
+		if gainDB == 0 {
+			*b = eqBand{}
+		} else {
+			// Peaking biquad with Q = 1. Cache coefficients until the gain changes.
+			omega := 2 * math.Pi * frequency / sampleRate
+			alpha := math.Sin(omega) / 2
+			a := math.Pow(10, gainDB/40)
+			a0 := 1 + alpha/a
+			b.gainDB = gainDB
+			b.b0 = (1 + alpha*a) / a0
+			b.b1 = -2 * math.Cos(omega) / a0
+			b.b2 = (1 - alpha*a) / a0
+			b.a1 = b.b1
+			b.a2 = (1 - alpha/a) / a0
+		}
+	}
+	if gainDB == 0 {
+		return x
+	}
+	y := b.b0*x + b.z1
+	b.z1 = b.b1*x - b.a1*y + b.z2
+	b.z2 = b.b2*x - b.a2*y
+	return y
 }
