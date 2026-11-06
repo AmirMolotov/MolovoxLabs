@@ -140,8 +140,29 @@ function renderSamplerRecordings(){const list=$('samplerRecordings');list.replac
  const preview=document.createElement('button');preview.className='secondary';preview.textContent='Preview';preview.onclick=()=>{$('samplerRecordingPreview').src=samplerURL('recording',recording.ID);$('samplerRecordingPreview').hidden=false;};
  const save=document.createElement('button');save.className='secondary';save.textContent='Save as…';save.onclick=()=>withLoading('Exporting recording…',()=>nativeExportSamplerRecording(recording.ID),true).catch(e=>$('samplerRecordStatus').textContent=errorText(e));
  const sample=document.createElement('button');sample.className='text-button';sample.textContent='Make samples';sample.onclick=async()=>{try{const source=await withLoading('Adding recording to source videos…',()=>nativeRecordingAsSource(recording.ID),true);await reloadSampler();await loadSamplerSource(source.ID);openSamplerView('editor');}catch(e){$('samplerRecordStatus').textContent=errorText(e);}};
- row.append(name,details,preview,save,sample);list.append(row);
+ const remove=document.createElement('button');remove.className='text-button';remove.textContent='Delete';remove.setAttribute('aria-label','Delete '+recording.Name);
+ remove.onclick=()=>{
+  deletingRecordingID=recording.ID;$('deleteRecordingDescription').textContent='Delete “'+recording.Name+'” from saved performances?';
+  $('deleteRecordingStatus').textContent='';$('deleteRecordingDialog').showModal();
+ };
+ row.append(name,details,preview,save,sample,remove);list.append(row);
 }}
+let deletingRecordingID=null;
+$('cancelDeleteRecording').onclick=()=>$('deleteRecordingDialog').close();
+$('deleteRecordingDialog').addEventListener?.('cancel',e=>{if($('confirmDeleteRecording').disabled)e.preventDefault();});
+$('confirmDeleteRecording').onclick=async()=>{
+ const id=deletingRecordingID,button=$('confirmDeleteRecording'),cancel=$('cancelDeleteRecording'),preview=$('samplerRecordingPreview');
+ button.disabled=cancel.disabled=true;
+ try{
+  if(preview.getAttribute('src')===samplerURL('recording',id)){
+   preview.pause();preview.removeAttribute('src');preview.load();preview.hidden=true;
+  }
+  await withLoading('Deleting recording…',()=>nativeRemoveSamplerRecording(id),true);
+  samplerRecordings=samplerRecordings.filter(recording=>recording.ID!==id);
+  renderSamplerRecordings();$('deleteRecordingDialog').close();$('samplerRecordStatus').textContent='Recording deleted.';
+ }catch(e){$('deleteRecordingStatus').textContent=errorText(e);}
+ finally{button.disabled=cancel.disabled=false;}
+};
 $('samplerRecordingMode').onchange=async()=>{const mode=$('samplerRecordingMode').value;try{await queueSettings(()=>nativeSetPlaybackMode(mode));await poll();drawSamplerStage();scheduleSave();}catch(e){$('samplerRecordStatus').textContent=errorText(e);}};
 $('samplerStopAll').onclick=async()=>{$('samplerEditorVideo').pause();await nativeStopSounds();updatePlayback([]);};
 window.addEventListener('beforeunload',event=>{if(samplerRecording){event.preventDefault();event.returnValue='Stop and save your sampler recording before closing.';}});

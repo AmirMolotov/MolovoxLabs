@@ -213,16 +213,7 @@ func (s *appStore) rawSourcePath(id string) (string, error) {
 	for _, source := range sources {
 		if source.ID == id && filepath.Base(source.File) == source.File {
 			if source.RecordingID != "" {
-				recordings, err := s.videoRecordingsLocked()
-				if err != nil {
-					return "", err
-				}
-				for _, recording := range recordings {
-					if recording.ID == source.RecordingID && filepath.Base(recording.File) == recording.File {
-						return filepath.Join(s.root, "sampler", "recordings", recording.File), nil
-					}
-				}
-				return "", errors.New("Recording source is missing")
+				return filepath.Join(s.root, "sampler", "recordings", source.File), nil
 			}
 			return filepath.Join(s.root, "sampler", "videos", source.File), nil
 		}
@@ -324,6 +315,44 @@ func (s *appStore) RecordingPath(id string) (string, error) {
 	}
 	return "", errors.New("Recording not found")
 }
+func (s *appStore) RemoveRecording(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	list, err := s.videoRecordingsLocked()
+	if err != nil {
+		return err
+	}
+	for i, recording := range list {
+		if recording.ID != id {
+			continue
+		}
+		if filepath.Ext(recording.File) != ".webm" || filepath.Base(recording.File) != recording.File {
+			return errors.New("Invalid recording filename")
+		}
+		sources, err := s.videoSourcesLocked()
+		if err != nil {
+			return err
+		}
+		remaining := make([]VideoRecording, 0, len(list)-1)
+		remaining = append(remaining, list[:i]...)
+		remaining = append(remaining, list[i+1:]...)
+		if err = s.write("sampler-recordings.json", remaining); err != nil {
+			return err
+		}
+		for _, source := range sources {
+			if source.RecordingID != "" && source.File == recording.File {
+				return nil // A source and its samples still use the backing file.
+			}
+		}
+		path := filepath.Join(s.root, "sampler", "recordings", recording.File)
+		if err = os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return errors.Join(err, s.write("sampler-recordings.json", list))
+		}
+		return nil
+	}
+	return nil
+}
+
 func recordingName() string { return "Performance " + time.Now().Format("2006-01-02 15-04-05") }
 
 func (s *appStore) RecordingAsSource(id string) (VideoSource, error) {

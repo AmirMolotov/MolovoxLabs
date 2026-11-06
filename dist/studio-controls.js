@@ -13,13 +13,28 @@ function renderFilters(){
   const shortcut=document.createElement('button');shortcut.className='secondary';shortcut.textContent='⌨ Shortcuts';shortcut.onclick=()=>openTriggerEditor('@filter:'+filter.ID);actions.append(shortcut);
   for(const [text,delta] of [['↑',-1],['↓',1]]){const button=document.createElement('button');button.className='secondary filter-move '+(delta<0?'move-up':'move-down');button.textContent=text;button.setAttribute('aria-label','Move '+filterTitle(filter)+' '+(delta<0?'up':'down'));button.disabled=index+delta<0||index+delta>=micFilters.length;button.onclick=()=>{[micFilters[index],micFilters[index+delta]]=[micFilters[index+delta],micFilters[index]];renderFilters();renderGroups();configure();};actions.append(button);}
   const remove=document.createElement('button');remove.className='secondary icon-close';remove.textContent='×';remove.setAttribute('aria-label','Remove '+filterTitle(filter));remove.onclick=()=>{micFilters.splice(index,1);for(const group of filterGroups)group.FilterIDs=group.FilterIDs.filter(id=>id!==filter.ID);renderFilters();renderGroups();configure();};actions.append(remove);top.append(label,actions);card.append(top);
+  const controls=renderEffectParameters(filter);
+  card.append(controls);$('filterCards').append(card);
+ });
+ if(patchGraph)renderPatch();
+}
+function renderEffectParameters(filter,inline=false){
   const controls=document.createElement('div');controls.className='filter-controls';
   const range=(field,title,min,max,step,unit)=>{
    const wrap=document.createElement('div'),head=document.createElement('div');head.className='rangehead';const name=document.createElement('label'),readout=document.createElement('output');name.textContent=title;
    const slider=document.createElement('input');slider.type='range';slider.min=min;slider.max=max;slider.step=step;slider.value=filter[field];slider.setAttribute('aria-label',filterTitle(filter)+' '+title);readout.textContent=filter[field]+unit;
-   slider.oninput=()=>{filter[field]=Number(slider.value);readout.textContent=slider.value+unit;configure();};head.append(name,readout);wrap.append(head,slider);controls.append(wrap);
+   slider.dataset.effectParameter=filter.ID+':'+field;
+   slider.oninput=()=>{
+    filter[field]=Number(slider.value);
+    readout.textContent=slider.value+unit;
+    for(const input of document.querySelectorAll('[data-effect-parameter]')){
+     if(input===slider||input.dataset.effectParameter!==slider.dataset.effectParameter)continue;
+     input.value=slider.value;input.previousElementSibling.querySelector('output').textContent=readout.textContent;
+    }
+    configure(true);
+   };head.append(name,readout);wrap.append(head,slider);controls.append(wrap);
   };
-  if(filter.Kind==='vst3')renderVSTFilter(filter,controls);
+  if(filter.Kind==='vst3')renderVSTFilter(filter,controls,inline);
   if(['reverb','echo','chorus','distortion','robot'].includes(filter.Kind))range('Mix','Effect mix',0,100,1,'%');
   if(filter.Kind==='reverb'){range('RoomSize','Room size',0,100,1,'%');range('Damping','Damping',0,100,1,'%');}
   if(filter.Kind==='echo'){range('DelayMS','Delay',20,1000,10,' ms');range('Feedback','Feedback',0,85,1,'%');}
@@ -34,9 +49,7 @@ function renderFilters(){
   if(filter.Kind==='lowpass')range('Frequency','Cutoff',1000,20000,100,' Hz');
   if(filter.Kind==='gate')range('Threshold','Threshold',-90,-5,1,' dB');
   if(filter.Kind==='compressor'){range('Threshold','Threshold',-60,0,1,' dB');range('Ratio','Ratio',1,20,.5,':1');}
-  card.append(controls);$('filterCards').append(card);
- });
- if(patchGraph)renderPatch();
+ return controls;
 }
 function renderGroups(){
  const selected=new Set([...$('groupMembers').querySelectorAll('input:checked')].map(x=>x.value));$('groupMembers').replaceChildren();$('filterGroups').replaceChildren();

@@ -5,8 +5,8 @@ function harness(){
  const controls=new Map();let id=0;
  const h={micFilters:[{ID:'reverb',Kind:'reverb'},{ID:'echo',Kind:'echo'}],library:{Boards:[]},devices:{Outputs:[]},configured:0,rendered:0,
   crypto:{randomUUID:()=>String(++id)},structuredClone,
-  $:key=>{if(!controls.has(key))controls.set(key,{textContent:'',value:'',checked:true});return controls.get(key);},
-  configure:async()=>{h.configured++;},window:{listeners:{},addEventListener(name,handler){this.listeners[name]=handler;}},document:{addEventListener(){}},filterTitle:f=>f.Kind,
+  $:key=>{if(!controls.has(key))controls.set(key,{textContent:'',value:'',checked:true,listeners:{},addEventListener(name,handler){this.listeners[name]=handler;}});return controls.get(key);},
+  configure:async()=>{h.configured++;},window:{listeners:{},addEventListener(name,handler){this.listeners[name]=handler;}},document:{listeners:{},querySelector:()=>null,addEventListener(name,handler){(this.listeners[name]??=[]).push(handler);}},filterTitle:f=>f.Kind,
  };
  vm.createContext(h);vm.runInContext(fs.readFileSync(path.join(__dirname,'../dist/studio-patch.js'),'utf8'),h);
  vm.runInContext('renderPatch=()=>{};drawPatchCables=()=>{};patchGraph=defaultPatch("mic",true)',h);
@@ -81,4 +81,35 @@ test('right-click cancels a node move and restores its previous position',()=>{
 test('releasing the right mouse button cannot finish a cable or save a node move',()=>{
  const h=harness();vm.runInContext('patchPending=patchGraph.Nodes[0].ID',h);
  h.window.listeners.pointerup({button:2});assert.equal(h.configured,0);assert.notEqual(vm.runInContext('patchPending',h),null);
+});
+
+test('Space and primary drag pan the viewport without moving nodes or applying routing',()=>{
+ const h=harness(),viewport=h.$('patchViewport'),before=h.patchOptions();
+ h.currentTab='patch';
+ let captured=false,prevented=false;
+ Object.assign(viewport,{scrollLeft:200,scrollTop:150,classList:{add(){},remove(){},toggle(){}},
+  setPointerCapture(){captured=true;},hasPointerCapture(){return captured;},releasePointerCapture(){captured=false;}});
+ const key={code:'Space',target:{closest:selector=>selector.includes('button')},preventDefault(){prevented=true;}};
+ for(const handler of h.document.listeners.keydown)handler(key);
+ assert.equal(prevented,false);
+ viewport.listeners.pointerdown({button:0,pointerId:5,clientX:80,clientY:50,currentTarget:viewport,preventDefault(){},stopPropagation(){}});
+ assert.equal(captured,true);
+ h.window.listeners.pointermove({pointerId:5,clientX:50,clientY:10});
+ assert.equal(viewport.scrollLeft,230);assert.equal(viewport.scrollTop,190);
+ h.window.listeners.pointerup({button:0,pointerId:5});assert.equal(captured,false);
+ h.document.listeners.keyup[0](key);assert.equal(prevented,true);
+ assert.deepEqual(h.patchOptions(),before);assert.equal(h.configured,0);
+});
+test('duplicate effect nodes get independent settings and no inherited shortcuts or cables',()=>{
+ const h=harness();
+ h.renderFilters=()=>{};h.renderGroups=()=>{};
+ Object.assign(h.micFilters[0],{Mix:40,Hotkeys:[{Key:65}]});
+ const before=h.patchOptions();
+ h.addPatchEffectInstance(h.micFilters[0],800,100);
+ const duplicate=h.micFilters.at(-1),after=h.patchOptions();
+ assert.notEqual(duplicate.ID,h.micFilters[0].ID);
+ assert.equal(duplicate.Mix,40);assert.equal(duplicate.Hotkeys.length,0);
+ duplicate.Mix=65;assert.equal(h.micFilters[0].Mix,40);
+ assert.ok(after.Nodes.some(n=>n.FilterID===duplicate.ID));
+ assert.deepEqual(after.Cables,before.Cables);
 });

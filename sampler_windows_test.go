@@ -194,6 +194,57 @@ func TestSamplerRecordingSavesExactChunksExportsAndRecovers(t *testing.T) {
 		t.Fatal("Interrupted recording not recovered", err)
 	}
 }
+func TestRemoveSamplerRecordingKeepsSourcesAndHandlesMissingFiles(t *testing.T) {
+	for _, mode := range []string{"unused", "source", "missing"} {
+		t.Run(mode, func(t *testing.T) {
+			store := &appStore{root: t.TempDir()}
+			recorder := &samplerRecorder{store: store}
+			id, err := recorder.begin("Performance")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = recorder.append(id, bytes.NewReader([]byte{0x1a, 0x45, 0xdf, 0xa3})); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = recorder.finish(id, 1); err != nil {
+				t.Fatal(err)
+			}
+			path, err := store.RecordingPath(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var source VideoSource
+			if mode == "source" {
+				source, err = store.RecordingAsSource(id)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if mode == "missing" {
+				if err = os.Remove(path); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err = store.RemoveRecording(id); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = store.RecordingPath(id); err == nil {
+				t.Fatal("Deleted recording still listed")
+			}
+			if mode == "source" {
+				retained, err := store.rawSourcePath(source.ID)
+				if err != nil || retained != path {
+					t.Fatalf("Source no longer resolves: %q %v", retained, err)
+				}
+				if _, err = os.Stat(retained); err != nil {
+					t.Fatal(err)
+				}
+			} else if _, err = os.Stat(path); !os.IsNotExist(err) {
+				t.Fatalf("Recording file still present: %v", err)
+			}
+		})
+	}
+}
 func TestSamplerTapRecordsSelectedPostEffectMix(t *testing.T) {
 	e := &nativeEngine{captures: []*captureEndpoint{{gain: 1}}}
 	defer e.vst.close()

@@ -30,13 +30,13 @@ async function save(){
 }
 function scheduleSave(){if(!ready)return;clearTimeout(saveTimer);saveTimer=setTimeout(save,180);}
 function updateLabels(){$('masterValue').textContent=$('master').value+'%';$('boardVolumeValue').textContent=$('boardVolume').value+'%';}
-let configurePending=false,configurePromise=null;
-function configure(){
- updateLabels();configurePending=true;if(configurePromise)return configurePromise;
+let configurePending=false,configurePromise=null,configureRefreshPatch=false;
+function configure(parametersOnly){
+ updateLabels();configurePending=true;configureRefreshPatch ||= parametersOnly!==true;if(configurePromise)return configurePromise;
  configurePromise=queueSettings(()=>withLoading('Applying effects and routing…',async()=>{
-  try{do{configurePending=false;await nativeConfigure(options());}while(configurePending);scheduleSave();refreshVSTCards();if(patchGraph)renderPatch();return true;}
+  try{do{configurePending=false;await nativeConfigure(options());}while(configurePending);scheduleSave();if(configureRefreshPatch){refreshVSTCards();if(patchGraph)renderPatch();}return true;}
   catch(e){message(errorText(e));return false;}
- })).finally(()=>{configurePromise=null;});return configurePromise;
+ })).finally(()=>{configurePromise=null;configureRefreshPatch=false;});return configurePromise;
 }
 ['master','boardVolume'].forEach(id=>$(id).oninput=configure);
 $('monitorMic').onchange=configure;

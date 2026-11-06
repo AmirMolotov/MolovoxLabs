@@ -21,13 +21,24 @@ $('vstSelect').onchange=async()=>{
  const filter={ID:crypto.randomUUID(),Kind:'vst3',Enabled:true,Hotkeys:[],MIDIs:[],PluginPath:plugin.Path,ClassID:plugin.ClassID,PluginName:plugin.Name,VSTState:''};
  await withLoading('Loading '+plugin.Name+'…',async()=>{micFilters.push(filter);renderFilters();renderGroups();await configure();await save();refreshVSTCards();},true);
 };
-function renderVSTFilter(filter,controls){
+function renderVSTFilter(filter,controls,inline=false){
  const box=document.createElement('div');box.className='vst-filter';box.dataset.vstId=filter.ID;
  const label=document.createElement('p');label.className='hint';label.dataset.vstStatus='';label.textContent='Checking plugin…';
  const row=document.createElement('div');row.className='vst-buttons';
  const editor=document.createElement('button');editor.className='secondary';editor.textContent='Open plugin editor';editor.onclick=async()=>{try{await save();await withLoading('Opening plugin editor…',()=>nativeVSTEditor(filter.ID),true);}catch(e){label.textContent=errorText(e);}};
- const params=document.createElement('button');params.className='secondary';params.textContent='Parameters';params.onclick=()=>openVSTParameters(filter);
- row.append(editor,params);box.append(row,label);controls.append(box);
+ const params=document.createElement('button');params.className='secondary';params.textContent='Parameters';if(inline){
+  const list=document.createElement('div'),status=document.createElement('p');list.className='patch-vst-params';status.className='hint';list.hidden=status.hidden=true;
+  params.onclick=async()=>{
+   if(!list.hidden){list.hidden=status.hidden=true;params.textContent='Show plugin parameters';return;}
+   list.hidden=status.hidden=false;params.textContent='Hide plugin parameters';status.textContent='Loading parameters…';
+   try{
+    const info=await nativeVSTInfo(filter.ID);if(info.Error)throw new Error(info.Error);
+    renderVSTParameterRows(filter.ID,(info.Parameters||[]).filter(p=>!p.Hidden),list,status);
+   }catch(e){status.textContent=errorText(e);}
+  };
+  params.textContent='Show plugin parameters';box.append(row,label,status,list);controls.append(box);
+ }else{params.onclick=()=>openVSTParameters(filter);box.append(row,label);controls.append(box);}
+ row.append(editor,params);
  queueMicrotask(()=>refreshVSTCard(filter,box));
 }
 async function refreshVSTCard(filter,box){
@@ -41,17 +52,21 @@ async function openVSTParameters(filter){
  try{await save();const info=await withLoading('Loading plugin parameters…',()=>nativeVSTInfo(filter.ID),true);if(info.Error)throw new Error(info.Error);vstEditorID=filter.ID;vstParameters=(info.Parameters||[]).filter(p=>!p.Hidden);$('vstTitle').textContent=filter.PluginName;$('vstSearch').value='';renderVSTParameters();$('vstDialog').showModal();}catch(e){message(errorText(e));}
 }
 function renderVSTParameters(){
- const search=$('vstSearch').value.toLowerCase(),list=vstParameters.filter(p=>p.Name.toLowerCase().includes(search));$('vstParamList').replaceChildren();
- for(const param of list){
+ const search=$('vstSearch').value.toLowerCase(),params=vstParameters.filter(p=>p.Name.toLowerCase().includes(search));
+ renderVSTParameterRows(vstEditorID,params,$('vstParamList'),$('vstParamStatus'));
+}
+function renderVSTParameterRows(target,params,list,status){
+ list.replaceChildren();
+ for(const param of params){
   const row=document.createElement('label');row.className='vst-param';const title=document.createElement('span');title.textContent=param.Name;
   const value=document.createElement('output');value.textContent=param.Display||Math.round(param.Value*100)+'%';
   const slider=document.createElement('input');slider.type='range';slider.min=0;slider.max=1;slider.step=param.Steps>0?1/param.Steps:.001;slider.value=param.Value;slider.disabled=param.ReadOnly;slider.setAttribute('aria-label',param.Name);
-  const target=vstEditorID;let timer;
-  const apply=async()=>{clearTimeout(timer);try{await nativeVSTParameter(target,param.ID,Number(slider.value));param.Value=Number(slider.value);$('vstParamStatus').textContent='Applied. Plugin settings are saved automatically.';}catch(e){$('vstParamStatus').textContent=errorText(e);}};
+  let timer;
+  const apply=async()=>{clearTimeout(timer);try{await nativeVSTParameter(target,param.ID,Number(slider.value));param.Value=Number(slider.value);status.textContent='Applied. Plugin settings are saved automatically.';}catch(e){status.textContent=errorText(e);}};
   slider.oninput=()=>{value.textContent=Math.round(Number(slider.value)*100)+'%';clearTimeout(timer);timer=setTimeout(apply,60);};slider.onchange=apply;
-  row.append(title,value,slider);$('vstParamList').append(row);
+  row.append(title,value,slider);list.append(row);
  }
- $('vstParamStatus').textContent=list.length+' parameter'+(list.length===1?'':'s')+'.';
+ status.textContent=params.length+' parameter'+(params.length===1?'':'s')+'.';
 }
 $('vstSearch').oninput=renderVSTParameters;
 $('closeVSTDialog').onclick=()=>$('vstDialog').close();

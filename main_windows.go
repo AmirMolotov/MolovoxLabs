@@ -227,13 +227,14 @@ func main() {
 			}
 			return path, store.ExportRecording(id, path)
 		},
-		"nativeRecordingAsSource": store.RecordingAsSource,
-		"nativeLoadPreferences":   store.LoadPreferences,
-		"nativeScanVST":           func(folders []string) error { return scanner.start(store, folders) },
-		"nativeVSTScanStatus":     scanner.snapshot,
-		"nativeLoadVSTPlugins":    store.VSTLibrary,
-		"nativeVSTInfo":           engine.vst.info,
-		"nativeVSTEditor":         engine.vst.editor,
+		"nativeRecordingAsSource":      store.RecordingAsSource,
+		"nativeRemoveSamplerRecording": store.RemoveRecording,
+		"nativeLoadPreferences":        store.LoadPreferences,
+		"nativeScanVST":                func(folders []string) error { return scanner.start(store, folders) },
+		"nativeVSTScanStatus":          scanner.snapshot,
+		"nativeLoadVSTPlugins":         store.VSTLibrary,
+		"nativeVSTInfo":                engine.vst.info,
+		"nativeVSTEditor":              engine.vst.editor,
 		"nativeVSTParameter": func(id string, param uint32, value float64) error {
 			if err := engine.vst.parameter(id, param, value); err != nil {
 				return err
