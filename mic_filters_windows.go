@@ -116,6 +116,10 @@ func validateFilters(filters []MicFilter) error {
 			if f.Threshold < -90 || f.Threshold > -5 {
 				return errors.New("Gate threshold must be −90 to −5 dB")
 			}
+		case "expander":
+			if f.Threshold < -90 || f.Threshold > 0 || f.Ratio < 1 || f.Ratio > 10 {
+				return errors.New("Expander threshold must be −90 to 0 dB and ratio 1:1 to 10:1")
+			}
 		case "compressor":
 			if f.Threshold < -60 || f.Threshold > 0 || f.Ratio < 1 || f.Ratio > 20 {
 				return errors.New("Invalid compressor controls")
@@ -146,11 +150,17 @@ func (c *micFilterChain) process(input float32, filters []MicFilter, start, end 
 		s := &c.states[i]
 		if s.kind != f.Kind {
 			*s = micFilterState{kind: f.Kind}
+			if f.Kind == "expander" {
+				s.gain = 1
+			}
 			c.pitches[i] = pitchShifter{}
 			c.denoisers[i] = noiseReducer{}
 		}
 		if !f.Enabled {
 			c.effects[i].active = false
+			if f.Kind == "expander" {
+				s.env, s.gain = 0, 1
+			}
 			if f.Kind == "addnoise" {
 				s.noiseGain = 0
 			}
@@ -204,6 +214,29 @@ func (c *micFilterChain) process(input float32, filters []MicFilter, start, end 
 				target = 1
 			}
 			speed := .0004
+			if target > s.gain {
+				speed = .01
+			}
+			s.gain += speed * (target - s.gain)
+			x *= s.gain
+		case "expander":
+			if f.Ratio == 1 {
+				s.env, s.gain = 0, 1
+				break
+			}
+			level := math.Abs(x)
+			speed := .0005
+			if level > s.env {
+				speed = .02
+			}
+			s.env += speed * (level - s.env)
+			threshold := math.Pow(10, f.Threshold/20)
+			target := 1.0
+			if s.env < threshold {
+				// Below threshold, each dB of input drop becomes Ratio dB at the output.
+				target = math.Pow(s.env/threshold, f.Ratio-1)
+			}
+			speed = .0004
 			if target > s.gain {
 				speed = .01
 			}

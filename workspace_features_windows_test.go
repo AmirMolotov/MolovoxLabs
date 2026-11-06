@@ -48,6 +48,32 @@ func TestMicFilters(t *testing.T) {
 		t.Fatal("Unknown filter accepted")
 	}
 }
+func TestDownwardExpander(t *testing.T) {
+	filters := []MicFilter{{Kind: "expander", Enabled: true, Threshold: -40, Ratio: 2}}
+	if err := validateFilters(filters); err != nil {
+		t.Fatal(err)
+	}
+	var chain micFilterChain
+	for _, tc := range []struct{ input, want float32 }{
+		{.1, .1}, {-.01, -.01}, {.001, .0001}, {.1, .1},
+	} {
+		var got float32
+		for i := 0; i < sampleRate; i++ {
+			got = chain.sample(tc.input, filters)
+		}
+		if math.Abs(float64(got-tc.want)) > 1e-6 {
+			t.Errorf("expanding %g: got %g, want %g", tc.input, got, tc.want)
+		}
+	}
+	filters[0].Ratio = 1
+	if got := chain.sampleAt(.001, filters, 0); got != .001 {
+		t.Errorf("1:1 ratio must pass through, got %g", got)
+	}
+	filters[0].Ratio = .9
+	if validateFilters(filters) == nil {
+		t.Fatal("Accepted ratio below 1:1")
+	}
+}
 func TestBoardPackageRoundTripAndDuplicateBindings(t *testing.T) {
 	root := t.TempDir()
 	a := &appStore{root: filepath.Join(root, "a")}

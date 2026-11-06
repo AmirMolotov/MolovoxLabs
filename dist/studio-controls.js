@@ -1,6 +1,6 @@
 'use strict';
-const filterNames={gain:'Gain',highpass:'High-pass',lowpass:'Low-pass',gate:'Noise gate',compressor:'Compressor',pitch:'Pitch',noise:'Noise reduction',addnoise:'Add noise',reverb:'Reverb',echo:'Echo',chorus:'Chorus',distortion:'Distortion',robot:'Robot'};
-const filterDefaults={gain:{GainDB:0},highpass:{Frequency:80},lowpass:{Frequency:12000},gate:{Threshold:-45},compressor:{Threshold:-18,Ratio:4},pitch:{Semitones:0},noise:{Strength:75,NoiseDB:-45},addnoise:{NoiseLevelDB:-36},reverb:{Mix:25,RoomSize:55,Damping:45},echo:{Mix:30,DelayMS:300,Feedback:35},chorus:{Mix:40,RateHz:1.2,DepthMS:5},distortion:{Mix:65,DriveDB:18,OutputDB:-12},robot:{Mix:100,Frequency:90}};
+const filterNames={gain:'Gain',highpass:'High-pass',lowpass:'Low-pass',gate:'Noise gate',expander:'Downward expander',compressor:'Compressor',pitch:'Pitch',noise:'Noise reduction',addnoise:'Add noise',reverb:'Reverb',echo:'Echo',chorus:'Chorus',distortion:'Distortion',robot:'Robot'};
+const filterDefaults={gain:{GainDB:0},highpass:{Frequency:80},lowpass:{Frequency:12000},gate:{Threshold:-45},expander:{Threshold:-45,Ratio:2},compressor:{Threshold:-18,Ratio:4},pitch:{Semitones:0},noise:{Strength:75,NoiseDB:-45},addnoise:{NoiseLevelDB:-36},reverb:{Mix:25,RoomSize:55,Damping:45},echo:{Mix:30,DelayMS:300,Feedback:35},chorus:{Mix:40,RateHz:1.2,DepthMS:5},distortion:{Mix:65,DriveDB:18,OutputDB:-12},robot:{Mix:100,Frequency:90}};
 function renderFilters(){
  $('filtersActive').checked=!bypassFilters;$('filterCards').replaceChildren();
  if(!micFilters.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='No effects yet. Choose an effect above to add its parameters.';$('filterCards').append(empty);}
@@ -48,6 +48,7 @@ function renderEffectParameters(filter,inline=false){
   if(filter.Kind==='highpass')range('Frequency','Cutoff',20,1000,10,' Hz');
   if(filter.Kind==='lowpass')range('Frequency','Cutoff',1000,20000,100,' Hz');
   if(filter.Kind==='gate')range('Threshold','Threshold',-90,-5,1,' dB');
+  if(filter.Kind==='expander'){range('Threshold','Threshold',-90,0,1,' dB');range('Ratio','Expansion ratio',1,10,.1,':1');}
   if(filter.Kind==='compressor'){range('Threshold','Threshold',-60,0,1,' dB');range('Ratio','Ratio',1,20,.5,':1');}
  return controls;
 }
