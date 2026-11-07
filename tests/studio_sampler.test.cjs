@@ -70,3 +70,5 @@ test('recording worklet streams queued PCM in order',()=>{
  p.port.onmessage({data:{type:'chunk',samples:new Float32Array([.4,.5])}});p.port.onmessage({data:{type:'start'}});p.process([],[[output]]);assert.ok(Math.abs(output[0]-.1)<1e-6);assert.ok(Math.abs(output[3]-.4)<1e-6);
  p.process([],[[output]]);assert.ok(Math.abs(output[0]-.5)<1e-6);assert.deepEqual(Array.from(output.slice(1)),[0,0,0]);
 });
+
+test('Video pads preview mirrors the live recording stage without creating another audio player',()=>{const h=harness();let copied;const ctx={fillRect(){},fillText(){},drawImage(){}};h.$('samplerStage').width=960;h.$('samplerStage').height=540;h.$('samplerStage').getContext=()=>ctx;h.$('samplerPadsPreview').width=960;h.$('samplerPadsPreview').height=540;h.$('samplerPadsPreview').getContext=()=>({drawImage(...args){copied=args;}});h.drawSamplerStage();assert.equal(copied[0],h.$('samplerStage'));assert.equal(copied[3],960);assert.equal(copied[4],540);assert.equal(h.$('samplerPadsNowPlaying').textContent,h.$('samplerNowPlaying').textContent);});

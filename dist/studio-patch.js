@@ -276,7 +276,7 @@ function togglePatchFocus(enabled=!patchFocusView){
   document.body.classList.add('patch-focused');
   patchFocusView.background=[...document.body.children].filter(el=>el!==workspace&&el.tagName!=='SCRIPT'&&el.tagName!=='DIALOG'&&el.id!=='appLoader').map(el=>({el,inert:el.inert}));
   for(const item of patchFocusView.background)item.el.inert=true;
-  button.textContent='Exit full screen';button.setAttribute('aria-pressed','true');button.focus();
+  button.textContent='Exit full screen';button.setAttribute('aria-pressed','true');button.title='Exit full screen patch bay';button.setAttribute('aria-label',button.title);button.focus();
   requestAnimationFrame(()=>{if(patchFocusView)fitPatchView();});
  }else{
   const previous=patchFocusView;patchFocusView=null;
@@ -285,7 +285,7 @@ function togglePatchFocus(enabled=!patchFocusView){
   previous.marker.replaceWith(workspace);
   for(const item of previous.background)item.el.inert=item.inert;
   patchZoom=previous.zoom;patchCameraX=previous.left;patchCameraY=previous.top;applyPatchCamera();
-  button.textContent='Full screen';button.setAttribute('aria-pressed','false');
+  button.textContent='Full screen';button.setAttribute('aria-pressed','false');button.title='Full screen patch bay';button.setAttribute('aria-label',button.title);
   if(patchFocusPrior?.isConnected)patchFocusPrior.focus();
  }
 }
