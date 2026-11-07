@@ -108,6 +108,8 @@ func main() {
 	store := &appStore{root: appRoot}
 	engine := &nativeEngine{}
 	recorder := &samplerRecorder{store: store}
+	arranger := &arrangementRenderer{store: store}
+	defer arranger.stop()
 	if err := recorder.recoverPending(); err != nil {
 		log.Print("Sampler recording recovery: ", err)
 	}
@@ -124,7 +126,7 @@ func main() {
 		log.Fatal(err)
 	}
 	prefix := "/" + hex.EncodeToString(token) + "/"
-	media := &samplerHTTP{prefix: prefix, store: store, recorder: recorder, engine: engine}
+	media := &samplerHTTP{prefix: prefix, store: store, recorder: recorder, engine: engine, arranger: arranger}
 	server := &http.Server{Handler: media.handler(assetHandler(prefix)), ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
@@ -184,12 +186,48 @@ func main() {
 	}
 	media.onLibraryChanged = reloadTriggers
 	bindings := map[string]interface{}{
-		"nativeSamplerLibrary":     store.SamplerLibrary,
-		"nativeBeginMicRecording":  engine.beginMicRecording,
-		"nativeAbortMicRecording":  engine.abortMicRecording,
-		"nativeCreateSamplerBoard": store.CreateSamplerBoard,
-		"nativePrepareMedia":       store.PrepareMedia,
-		"nativeSetPlaybackMode":    engine.SetPlaybackMode,
+		"nativeLoadArrangement":    store.LoadArrangement,
+		"nativeSaveArrangement":    store.SaveArrangement,
+		"nativeArrangementFromPad": store.ArrangementFromPad,
+		"nativeImportArrangementAsset": func() (ArrangementAsset, error) {
+			path, err := chooseMediaFile(uintptr(window.Window()), "Import arrangement media", "*.wav;*.mp3;*.flac;*.ogg;*.opus;*.aac;*.m4a;*.aiff;*.wma;*.mp4;*.mkv;*.webm;*.mov;*.avi;*.m4v;*.wmv;*.png;*.jpg;*.jpeg;*.webp;*.gif;*.bmp;*.tif;*.tiff")
+			if err != nil || path == "" {
+				return ArrangementAsset{}, err
+			}
+			return store.ImportArrangementAsset(path, "")
+		},
+		"nativeBeginArrangementRender": func(project ArrangementProject, kind string) (ArrangementRenderStatus, error) {
+			target := ""
+			if kind != "preview" {
+				extension := ".mp4"
+				if kind == "audio" {
+					extension = ".wav"
+				}
+				var err error
+				target, err = chooseAudioExportFile(uintptr(window.Window()), project.Name, extension)
+				if err != nil || target == "" {
+					return ArrangementRenderStatus{}, err
+				}
+			}
+			return arranger.begin(project, kind, target)
+		},
+		"nativeArrangementRenderStatus": arranger.snapshot,
+		"nativeCancelArrangementRender": arranger.stop,
+		"nativeStartArrangementPreview": func(id string, at float64) error {
+			path, err := arranger.previewPath(id, ".f32")
+			if err != nil {
+				return err
+			}
+			return engine.playArrangementPreview(path, at)
+		},
+		"nativeStopArrangementPreview":   engine.StopArrangementPreview,
+		"nativeArrangementPreviewStatus": engine.ArrangementPreviewStatus,
+		"nativeSamplerLibrary":           store.SamplerLibrary,
+		"nativeBeginMicRecording":        engine.beginMicRecording,
+		"nativeAbortMicRecording":        engine.abortMicRecording,
+		"nativeCreateSamplerBoard":       store.CreateSamplerBoard,
+		"nativePrepareMedia":             store.PrepareMedia,
+		"nativeSetPlaybackMode":          engine.SetPlaybackMode,
 		"nativeImportAudioMedia": func() (MediaInfo, error) {
 			path, err := chooseMediaFile(uintptr(window.Window()), "Add audio or video", "*.wav;*.mp3;*.flac;*.ogg;*.opus;*.aac;*.m4a;*.aiff;*.aif;*.wma;*.mp4;*.mkv;*.webm;*.mov;*.avi;*.m4v;*.mpeg;*.mpg;*.ts;*.m2ts;*.wmv;*.flv")
 			if err != nil || path == "" {

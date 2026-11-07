@@ -10,7 +10,7 @@ function openTab(name){
  if(name!=='patch'&&typeof patchFocusView!=='undefined'&&patchFocusView)togglePatchFocus(false);
  if(currentTab!==name&&typeof stopTrimLoop==='function')stopTrimLoop();currentTab=name;
  for(const tab of document.querySelectorAll('[data-tab]')){const on=tab.dataset.tab===name;tab.setAttribute('aria-selected',String(on));tab.tabIndex=on?0:-1;$(tab.getAttribute('aria-controls')).hidden=!on;}
- if(active)poll();else idle();if(name==='patch'){renderPatch();togglePatchFocus(true);}if(name==='sampler')refreshSamplerRecordOutputs();
+ if(active)poll();else idle();if(name==='patch'){renderPatch();togglePatchFocus(true);}if(name==='sampler'||name==='recording')refreshSamplerRecordOutputs();if(name==='arrange'&&typeof renderArrangement==='function')renderArrangement();
 }
 document.querySelectorAll('[data-tab]').forEach(tab=>{
  tab.onclick=()=>openTab(tab.dataset.tab);
@@ -197,7 +197,7 @@ async function init(){
   $('master').value=Math.round((o.Volume??1)*100);$('boardVolume').value=Math.round((o.BoardVolume??1)*100);$('monitorMic').checked=!!(o.MonitorMic||o.Enabled);$('autoListen').checked=preferences.AutoListen??true;$('globalKeys').checked=preferences.GlobalKeys??true;
   loadFilterModels(preferences);await refreshMIDI(preferences.MIDIInput||'');updateLabels();
   const missing=fillDevices(await nativeDevices(),preferences);
-  library=await nativeLibrary();await initSampler(preferences);renderLibrary(preferences.BoardID);initPatch(preferences);await nativeConfigure(options());ready=true;wantListening=$('autoListen').checked;$('pause').disabled=false;
+  library=await nativeLibrary();await initSampler(preferences);await initArrangement();renderLibrary(preferences.BoardID);initPatch(preferences);await nativeConfigure(options());ready=true;wantListening=$('autoListen').checked;$('pause').disabled=false;
   if(missing){setLive(false);openTab('settings');message('A saved device is missing. Select a replacement to switch automatically.');}
   else if(wantListening){await start();if(!preferences.Saved)await save();}
   else{setLive(false);message('Automatic listening is off. Resume when ready.');}

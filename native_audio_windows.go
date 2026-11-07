@@ -180,6 +180,7 @@ type renderEndpoint struct {
 	toneLeft  int
 }
 type nativeEngine struct {
+	arrangement    atomic.Pointer[arrangementTransport]
 	micRecordTap   atomic.Pointer[samplerAudioTap]
 	soloClips      bool
 	samplerTap     atomic.Pointer[samplerAudioTap]
@@ -410,6 +411,7 @@ func (e *nativeEngine) render(r *renderEndpoint, output []byte, frames int, prim
 	} else if len(r.filters.slots) != len(o.Filters) {
 		r.filters = *prepareFilterChain(o.Filters, &r.filters, 0)
 	}
+	transport := e.arrangement.Load()
 	rack := e.vst.current.Load()
 	r.filters.vstVoice = r.index
 	for i := range r.filters.vstSlots {
@@ -476,6 +478,9 @@ func (e *nativeEngine) render(r *renderEndpoint, output []byte, frames int, prim
 			}
 			y += boardMix * o.BoardVolume * o.Volume
 		}
+		if transport != nil && r.index < len(transport.streams) {
+			y += transport.streams[r.index].sample() * o.Volume
+		}
 		if y > .999 {
 			y = .999
 			clipped = true
@@ -528,6 +533,7 @@ func (e *nativeEngine) render(r *renderEndpoint, output []byte, frames int, prim
 	}
 }
 func (e *nativeEngine) stopLocked() {
+	e.StopArrangementPreview()
 	e.micRecordTap.Store(nil)
 	e.samplerTap.Store(nil)
 	e.closing.Store(true)

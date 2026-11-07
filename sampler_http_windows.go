@@ -16,6 +16,7 @@ import (
 )
 
 type samplerHTTP struct {
+	arranger         *arrangementRenderer
 	prefix           string
 	store            *appStore
 	recorder         *samplerRecorder
@@ -38,6 +39,72 @@ func (h *samplerHTTP) handler(fallback http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		if origin := r.Header.Get("Origin"); origin != "" && origin != "http://"+r.Host {
 			http.Error(w, "Different-origin requests are not allowed", http.StatusForbidden)
+			return
+		}
+		if strings.HasPrefix(path, "sampler/arrangement/") {
+			parts := strings.Split(strings.TrimPrefix(path, "sampler/arrangement/"), "/")
+			if r.Method == http.MethodGet && len(parts) == 2 {
+				var file string
+				var err error
+				switch parts[0] {
+				case "asset":
+					file, err = h.store.ArrangementAssetPath(parts[1], false)
+				case "poster":
+					file, err = h.store.ArrangementAssetPath(parts[1], true)
+				case "render":
+					if h.arranger == nil {
+						http.NotFound(w, r)
+						return
+					}
+					file, err = h.arranger.previewPath(parts[1], ".mp4")
+				default:
+					http.NotFound(w, r)
+					return
+				}
+				if err != nil {
+					http.NotFound(w, r)
+					return
+				}
+				http.ServeFile(w, r, file)
+				return
+			}
+			if r.Method == http.MethodPost && len(parts) == 1 && parts[0] == "upload" {
+				name := filepath.Base(r.URL.Query().Get("name"))
+				extension := strings.ToLower(filepath.Ext(name))
+				if !strings.Contains(" .wav .mp3 .flac .ogg .opus .aac .m4a .aiff .wma .mp4 .mkv .webm .mov .avi .m4v .wmv .png .jpg .jpeg .webp .gif .bmp .tif .tiff ", " "+extension+" ") || extension == "" {
+					http.Error(w, "Choose an audio, image or video file", 400)
+					return
+				}
+				dir := filepath.Join(h.store.root, "arrangement", "uploads")
+				if err := os.MkdirAll(dir, 0700); err != nil {
+					http.Error(w, err.Error(), 500)
+					return
+				}
+				file, err := os.CreateTemp(dir, "upload-*"+extension)
+				if err != nil {
+					http.Error(w, err.Error(), 500)
+					return
+				}
+				defer os.Remove(file.Name())
+				_, err = io.Copy(file, http.MaxBytesReader(w, r.Body, maxVideoBytes))
+				closeErr := file.Close()
+				if err == nil {
+					err = closeErr
+				}
+				if err != nil {
+					http.Error(w, "The media upload could not be saved (maximum 8 GB)", 400)
+					return
+				}
+				asset, err := h.store.ImportArrangementAsset(file.Name(), name)
+				if err != nil {
+					http.Error(w, err.Error(), 400)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(asset)
+				return
+			}
+			http.NotFound(w, r)
 			return
 		}
 		if r.Method == http.MethodGet && (strings.HasPrefix(path, "sampler/source/") || strings.HasPrefix(path, "sampler/recording/")) {

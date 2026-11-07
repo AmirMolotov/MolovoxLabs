@@ -12,7 +12,7 @@ import (
 )
 
 func chooseAudioExportFile(owner uintptr, name, extension string) (string, error) {
-	if extension != ".wav" && extension != ".mp3" && extension != ".webm" {
+	if extension != ".wav" && extension != ".mp3" && extension != ".webm" && extension != ".mp4" {
 		return "", errors.New("Unsupported audio file type")
 	}
 	name = strings.Map(func(r rune) rune {
@@ -24,6 +24,9 @@ func chooseAudioExportFile(owner uintptr, name, extension string) (string, error
 	kind, titleText := "Audio file", "Export original audio"
 	if extension == ".webm" {
 		kind, titleText = "Video recording", "Save sampler recording"
+	}
+	if extension == ".mp4" {
+		kind, titleText = "Video", "Export arrangement video"
 	}
 	description, _ := windows.UTF16FromString(kind + " (*" + extension + ")")
 	pattern, _ := windows.UTF16FromString("*" + extension)

@@ -1,0 +1,27 @@
+const {test}=require('node:test'),assert=require('node:assert/strict');
+const model=require('../dist/studio-arrangement.js');
+test('arrangement grid snaps to tempo subdivisions and keeps free placement when disabled',()=>{assert.equal(model.snap(.19,{BPM:120,Snap:true}),.25);assert.equal(model.snap(.19,{BPM:120,Snap:false}),.19);assert.equal(model.snap(-2,{BPM:120,Snap:true}),0);});
+test('left trim preserves source-to-playlist alignment and clamps both ends',()=>{const c={At:2,In:1,Duration:4};assert.deepEqual(model.trim(c,'left',1,10),{At:3,In:2,Duration:3});assert.deepEqual(model.trim(c,'left',-10,10),{At:1,In:0,Duration:5});assert.ok(model.trim(c,'left',10,10).Duration>=.049999);assert.deepEqual(c,{At:2,In:1,Duration:4});});
+test('right trim cannot extend past source or create an empty clip',()=>{const c={At:2,In:1,Duration:4};assert.equal(model.trim(c,'right',20,10).Duration,9);assert.equal(model.trim(c,'right',-20,10).Duration,.05);});
+test('export duration covers final clip across tracks including gaps',()=>{assert.equal(model.end({Clips:[]}),0);assert.equal(model.end({Clips:[{At:8,Duration:2},{At:1,Duration:4}]}),10);});
+const vm=require('node:vm'),fs=require('node:fs');
+function arrangementHarness(){
+ const elements=new Map();class Element{constructor(){this.children=[];this.dataset={};this.style={setProperty(){}};this.classList={add(){},toggle(){}};this.value='';this.hidden=false;}append(...items){this.children.push(...items);}replaceChildren(...items){this.children=[...items];}setAttribute(){}addEventListener(){}setPointerCapture(){}focus(){}getBoundingClientRect(){return {left:0,top:0,bottom:400};}querySelectorAll(){return [];}pause(){}load(){}}
+ const $=id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id);};
+ let saved=null,imports=0;
+ const h={console,document:{createElement:()=>new Element(),createElementNS:()=>new Element(),addEventListener(){}},$,crypto:{randomUUID:()=>String(Math.random())},samplerURL:(k,id)=>k+'/'+id,samplerSeconds:String,library:{Boards:[]},nativeLoadArrangement:async()=>({Project:{Version:1,Name:'Test',BPM:120,Snap:true,Tracks:[{ID:'a',Name:'A'},{ID:'b',Name:'B'}],Clips:[]},Assets:[]}),nativeSaveArrangement:async p=>{saved=p;},nativeArrangementFromPad:async()=>{imports++;return {ID:'owned',Name:'Copied sound',Kind:'audio',Seconds:8};},nativeStopArrangementPreview:async()=>{},withLoading:async(_,fn)=>fn(),errorText:String,setTimeout,clearTimeout,confirm:()=>true};
+ vm.createContext(h);const source=fs.readFileSync(require('node:path').join(__dirname,'../dist/studio-arrangement.js'),'utf8');vm.runInContext(source.slice(0,source.lastIndexOf('}'))+'globalThis.api={initArrangement,arrAdd,arrSave,arrClip,getProject:()=>arrangement,select:id=>{arrSelected=id;},renderArrangement};\n}',h);return {h,$,saved:()=>saved,imports:()=>imports};
+}
+test('adding a pad makes an owned copy and saves placement; inspector trims and undo restores it',async()=>{
+ const {h,$,saved,imports}=arrangementHarness();await h.api.initArrangement();await h.api.arrAdd('pad','pad',.19,'b');await h.api.arrSave();assert.equal(imports(),1);const c=h.api.getProject().Clips[0];assert.equal(c.TrackID,'b');assert.equal(c.At,.25);assert.equal(c.AssetID,'owned');assert.equal(saved().Clips.length,1);
+ $('arrIn').value='7';$('arrIn').onchange();assert.equal(h.api.arrClip().Duration,1);$('arrDuration').value='9';$('arrDuration').onchange();assert.equal(h.api.arrClip().Duration,1);$('arrUndo').onclick();assert.equal(h.api.getProject().Clips[0].In,7);$('arrUndo').onclick();assert.equal(h.api.getProject().Clips[0].In,0);await h.api.arrSave();
+});
+test('duplicate creates an independent clip and deleting it keeps the source clip and media',async()=>{
+ const {h,$}=arrangementHarness();await h.api.initArrangement();await h.api.arrAdd('pad','pad',1,'a');$('arrDuplicate').onclick();const p=h.api.getProject();assert.equal(p.Clips.length,2);assert.notEqual(p.Clips[0].ID,p.Clips[1].ID);assert.equal(p.Clips[1].At,9);$('arrDelete').onclick();assert.equal(p.Clips.length,1);await h.api.arrAdd('asset','owned',4,'b');assert.equal(p.Clips.length,2);await h.api.arrSave();
+});
+test('pointer drag moves a clip and trim edges preserve source alignment',async()=>{
+ const {h,$}=arrangementHarness();await h.api.initArrangement();await h.api.arrAdd('pad','pad',1,'a');const c=h.api.getProject().Clips[0],clipElement={dataset:{clip:c.ID}};
+ const event=(x,edge)=>({button:0,clientX:x,clientY:50,pointerId:1,preventDefault(){},target:{dataset:{edge},closest:sel=>sel==='[data-clip]'?clipElement:null}});
+ $('arrGrid').onpointerdown(event(100));$('arrGrid').onpointermove(event(160));$('arrGrid').onpointerup();assert.equal(c.At,2);
+ $('arrGrid').onpointerdown(event(100,'left'));$('arrGrid').onpointermove(event(160));$('arrGrid').onpointerup();assert.equal(c.At,3);assert.equal(c.In,1);assert.equal(c.Duration,7);await h.api.arrSave();
+});
