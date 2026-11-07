@@ -7,6 +7,8 @@ let micFilters=[],filterGroups=[],allFilterHotkeys=[],allFilterMIDIs=[],bypassFi
 let wantListening=false,routeApplying=false,routeDirty=false,routeTimer=null;
 let padViews=new Map(),playingSounds=new Map();
 function openTab(name){
+ if(name!=='arrange'&&typeof toggleArrangementFocus==='function')toggleArrangementFocus(false);
+ if(name!=='arrange'&&typeof stopArrangementMediaPreview==='function')stopArrangementMediaPreview();
  if(name!=='patch'&&typeof patchFocusView!=='undefined'&&patchFocusView)togglePatchFocus(false);
  if(currentTab!==name&&typeof stopTrimLoop==='function')stopTrimLoop();currentTab=name;
  for(const tab of document.querySelectorAll('[data-tab]')){const on=tab.dataset.tab===name;tab.setAttribute('aria-selected',String(on));tab.tabIndex=on?0:-1;$(tab.getAttribute('aria-controls')).hidden=!on;}

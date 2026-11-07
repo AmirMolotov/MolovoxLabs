@@ -38,10 +38,9 @@ function renderEqualizer(filter){
    <path class="eq-selected-curve"></path><path class="eq-response"></path>
    <g class="eq-points"></g>
   </svg>
-  <p class="eq-help">Drag a point to change frequency and gain. Wheel over the graph to change its width. Lower Q affects a wider range.</p>
+  <p class="eq-help">Click the chart to add a band; click a point to select it. Drag to shape it, wheel to change width, right-click a point to remove it. Up to 8 bands.</p>
   <div class="eq-actions">
    <select aria-label="Select equalizer band"></select>
-   <button type="button" class="secondary eq-add">+ Band</button>
    <button type="button" class="secondary eq-remove">Remove</button>
   </div>
   <div class="eq-values">
@@ -51,7 +50,7 @@ function renderEqualizer(filter){
   </div>`;
  const svg=editor.querySelector('svg'),grid=editor.querySelector('.eq-grid');
  const points=editor.querySelector('.eq-points'),response=editor.querySelector('.eq-response'),curve=editor.querySelector('.eq-selected-curve');
- const select=editor.querySelector('select'),add=editor.querySelector('.eq-add'),remove=editor.querySelector('.eq-remove');
+ const select=editor.querySelector('select'),remove=editor.querySelector('.eq-remove');
  const inputs=[...editor.querySelectorAll('[data-eq-field]')];
  let selected=0,drag=null;
  const shape=(tag,attrs,parent)=>{
@@ -86,7 +85,6 @@ function renderEqualizer(filter){
   select.replaceChildren(...(bands.length?bands.map((band,i)=>new Option('Band '+(i+1),i)): [new Option('No bands','')]));
   select.value=current?String(selected):'';
   select.disabled=remove.disabled=!current;
-  add.disabled=bands.length>=eqColors.length;
   for(const input of inputs){
    input.disabled=!current;
    input.value=current?.[input.dataset.eqField]??'';
@@ -115,14 +113,6 @@ function renderEqualizer(filter){
  }
  editor.addEventListener('eq-change',render);
  select.onchange=()=>{selected=Number(select.value);render();};
- add.onclick=()=>{
-  const bands=equalizerBands(filter);
-  if(bands.length>=eqColors.length)return;
-  selected=bands.length;
-  const candidates=[1000,250,4000,60,500,2000,12000,30];
-  const Frequency=candidates.find(hz=>bands.every(band=>Math.abs(Math.log2(band.Frequency/hz))>.5))??1000;
-  apply([...bands,{Frequency,GainDB:0,Q:1}]);
- };
  remove.onclick=()=>apply(equalizerBands(filter).filter((_,i)=>i!==selected));
  for(const input of inputs){
   input.onchange=()=>{
@@ -132,16 +122,18 @@ function renderEqualizer(filter){
   };
  }
  svg.onpointerdown=event=>{
+  if(event.button!==0||drag)return;
   const point=event.target.closest('[data-band]');
-  if(event.button!==0||!point||drag)return;
-  event.preventDefault();
   const origin=new DOMPoint(event.clientX,event.clientY).matrixTransform(svg.getScreenCTM().inverse());
-  selected=Number(point.dataset.band);
-  const band=equalizerBands(filter)[selected];
+  if(!point&&(origin.x<eqPlot.left||origin.x>eqPlot.right||origin.y<eqPlot.top||origin.y>eqPlot.bottom))return;
+  event.preventDefault();event.stopPropagation();
+  if(point)selected=Number(point.dataset.band);
+  else {const bands=equalizerBands(filter);if(bands.length>=eqColors.length)return;selected=bands.length;apply([...bands,{Frequency:Math.round(eqFrequency(origin.x)),GainDB:Math.round(eqGain(origin.y)*2)/2,Q:1}]);}
+  const band=equalizerBands(filter)[selected];if(!band)return;
   drag={id:event.pointerId,index:selected,dx:eqX(band.Frequency)-origin.x,dy:eqY(band.GainDB)-origin.y};
-  svg.setPointerCapture(event.pointerId);
-  render();
+  svg.setPointerCapture(event.pointerId);render();
  };
+ svg.oncontextmenu=event=>{event.preventDefault();event.stopPropagation();const point=event.target.closest('[data-band]');if(!point)return;const index=Number(point.dataset.band);drag=null;selected=Math.max(0,index-1);apply(equalizerBands(filter).filter((_,i)=>i!==index));render();};
  svg.onpointermove=event=>{
   if(!drag||drag.id!==event.pointerId)return;
   const point=new DOMPoint(event.clientX,event.clientY).matrixTransform(svg.getScreenCTM().inverse());

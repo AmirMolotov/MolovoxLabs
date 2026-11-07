@@ -259,3 +259,43 @@ func TestArrangementCancelledExportPreservesDestination(t *testing.T) {
 		t.Fatal("Cancelled export replaced previous file")
 	}
 }
+
+func TestRemoveArrangementMediaDeletesInstancesButPreservesOriginalAndOtherAssets(t *testing.T) {
+	s := &appStore{root: t.TempDir()}
+	original := filepath.Join(t.TempDir(), "original.wav")
+	os.WriteFile(original, samplerWavFixture(4800), 0600)
+	a := ArrangementAsset{ID: "delete", Name: "Delete", Kind: "audio", File: "delete.wav", Seconds: 1, HasAudio: true}
+	b := ArrangementAsset{ID: "keep", Name: "Keep", Kind: "audio", File: "keep.wav", Seconds: 1}
+	os.MkdirAll(filepath.Dir(s.arrangementPath(a.File)), 0700)
+	os.WriteFile(s.arrangementPath(a.File), []byte("owned"), 0600)
+	os.WriteFile(s.arrangementPath(b.File), []byte("keep"), 0600)
+	s.appendArrangementAsset(a)
+	s.appendArrangementAsset(b)
+	p := defaultArrangement()
+	p.Clips = []ArrangementClip{{ID: "one", AssetID: a.ID, TrackID: p.Tracks[0].ID, Duration: 1, Volume: 1}, {ID: "two", AssetID: b.ID, TrackID: p.Tracks[1].ID, Duration: 1, Volume: 1}}
+	if err := s.SaveArrangement(p); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.RemoveArrangementAsset(a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Assets) != 1 || len(got.Project.Clips) != 1 || got.Project.Clips[0].AssetID != b.ID {
+		t.Fatal("Deletion removed other media or left dangling instances", got)
+	}
+	if _, err = os.Stat(s.arrangementPath(a.File)); !os.IsNotExist(err) {
+		t.Fatal("Owned media remains", err)
+	}
+	if _, err = os.Stat(original); err != nil {
+		t.Fatal("Original file changed", err)
+	}
+	// Stale/missing files must not prevent removing an import from the library.
+	os.Remove(s.arrangementPath(b.File))
+	if _, err = s.RemoveArrangementAsset(b.ID); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := s.LoadArrangement()
+	if err != nil || len(saved.Project.Clips) != 0 || len(saved.Assets) != 0 {
+		t.Fatal(saved, err)
+	}
+}

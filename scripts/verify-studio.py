@@ -16,6 +16,8 @@ class Structure(HTMLParser):
     def __init__(self):super().__init__();self.stack=[];self.signals=[]
     def handle_starttag(self,tag,attrs):
         attrs=dict(attrs)
+        if tag=="video" and attrs.get("id") in ("arrPreview","arrMediaVideo"):
+            assert "muted" in attrs, "Arrangement preview must use native audio"
         if tag=="canvas" and attrs.get("id") in ("micWave","outWave"):
             assert "section" not in self.stack
             self.signals.append(attrs.get("id"))

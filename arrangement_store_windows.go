@@ -17,6 +17,7 @@ import (
 )
 
 type ArrangementAsset struct {
+	SourcePadID                             string `json:",omitempty"`
 	ID, Name, Kind, File, AudioFile, Poster string
 	Seconds, VideoIn                        float64
 	HasAudio                                bool
@@ -304,7 +305,7 @@ func (s *appStore) ArrangementFromPad(id string) (asset ArrangementAsset, err er
 	if err != nil {
 		return asset, err
 	}
-	asset = ArrangementAsset{ID: newID(), Name: sound.Name, Kind: "audio", Seconds: sound.Seconds, HasAudio: true, Waveform: sound.Waveform}
+	asset = ArrangementAsset{SourcePadID: id, ID: newID(), Name: sound.Name, Kind: "audio", Seconds: sound.Seconds, HasAudio: true, Waveform: sound.Waveform}
 	asset.File = asset.ID + filepath.Ext(audio)
 	defer func() {
 		if err != nil {
@@ -345,3 +346,59 @@ func (s *appStore) ArrangementFromPad(id string) (asset ArrangementAsset, err er
 	return asset, err
 }
 func arrangementNumber(value float64) string { return fmt.Sprintf("%.6f", value) }
+
+// Remove only owned arrangement media. Original imports and soundboard pads are untouched.
+func (s *appStore) RemoveArrangementAsset(id string) (ArrangementLibrary, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := ArrangementLibrary{Project: defaultArrangement()}
+	assets, err := s.arrangementAssetsLocked()
+	if err != nil {
+		return result, err
+	}
+	var removed *ArrangementAsset
+	result.Assets = []ArrangementAsset{}
+	for _, a := range assets {
+		if a.ID == id {
+			copy := a
+			removed = &copy
+		} else {
+			result.Assets = append(result.Assets, a)
+		}
+	}
+	if removed == nil {
+		return result, errors.New("Imported media not found")
+	}
+	if err = s.read("arrangement.json", &result.Project); err != nil && !os.IsNotExist(err) {
+		return result, err
+	}
+	clips := []ArrangementClip{}
+	for _, clip := range result.Project.Clips {
+		if clip.AssetID != id {
+			clips = append(clips, clip)
+		}
+	}
+	result.Project.Clips = clips
+	if err = s.write("arrangement.json", result.Project); err != nil {
+		return result, err
+	}
+	if err = s.write("arrangement-assets.json", result.Assets); err != nil {
+		return result, err
+	}
+	for _, name := range []string{removed.File, removed.AudioFile, removed.Poster} {
+		if name == "" || filepath.Base(name) != name {
+			continue
+		}
+		shared := false
+		for _, a := range result.Assets {
+			if name == a.File || name == a.AudioFile || name == a.Poster {
+				shared = true
+				break
+			}
+		}
+		if !shared {
+			os.Remove(s.arrangementPath(name))
+		}
+	}
+	return result, nil
+}

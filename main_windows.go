@@ -8,6 +8,7 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -186,7 +187,13 @@ func main() {
 	}
 	media.onLibraryChanged = reloadTriggers
 	bindings := map[string]interface{}{
-		"nativeLoadArrangement":    store.LoadArrangement,
+		"nativeLoadArrangement": store.LoadArrangement,
+		"nativeRemoveArrangementAsset": func(id string) (ArrangementLibrary, error) {
+			if arranger.snapshot().State == "rendering" {
+				return ArrangementLibrary{}, errors.New("Wait for the render or cancel it before removing media")
+			}
+			return store.RemoveArrangementAsset(id)
+		},
 		"nativeSaveArrangement":    store.SaveArrangement,
 		"nativeArrangementFromPad": store.ArrangementFromPad,
 		"nativeImportArrangementAsset": func() (ArrangementAsset, error) {
