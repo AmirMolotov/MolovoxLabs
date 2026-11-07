@@ -227,6 +227,13 @@ func main() {
 			}
 			return engine.playArrangementPreview(path, at)
 		},
+		"nativeStartArrangementLoop": func(id string, at float64) error {
+			path, err := arranger.previewPath(id, ".f32")
+			if err != nil {
+				return err
+			}
+			return engine.playArrangementPreview(path, at, true)
+		},
 		"nativeStopArrangementPreview":   engine.StopArrangementPreview,
 		"nativeArrangementPreviewStatus": engine.ArrangementPreviewStatus,
 		"nativeSamplerLibrary":           store.SamplerLibrary,

@@ -236,7 +236,7 @@ func (r *arrangementRenderer) render(ctx context.Context, project ArrangementPro
 	}
 	if status.Kind == "preview" {
 		pcm := filepath.Join(filepath.Dir(target), status.ID+".f32")
-		command, e := mediaCommand(ctx, "ffmpeg", "-v", "error", "-nostdin", "-y", "-i", tempPath, "-vn", "-ac", "1", "-ar", "48000", "-f", "f32le", pcm)
+		command, e := mediaCommand(ctx, "ffmpeg", "-v", "error", "-nostdin", "-y", "-i", tempPath, "-t", arrangementNumber(duration), "-vn", "-ac", "1", "-ar", "48000", "-f", "f32le", pcm)
 		if e != nil {
 			return e
 		}

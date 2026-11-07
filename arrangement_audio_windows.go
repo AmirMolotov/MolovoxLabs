@@ -20,9 +20,10 @@ type arrangementPCMStream struct {
 	cursor   int
 	consumed atomic.Int64
 	total    int64
+	loop     bool
 }
 
-func newArrangementPCMStream(path string, at, frames int64) (*arrangementPCMStream, error) {
+func newArrangementPCMStream(path string, at, frames int64, looping ...bool) (*arrangementPCMStream, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -31,7 +32,7 @@ func newArrangementPCMStream(path string, at, frames int64) (*arrangementPCMStre
 		file.Close()
 		return nil, err
 	}
-	stream := &arrangementPCMStream{done: make(chan struct{}), free: make(chan []float32, 8), ready: make(chan []float32, 8), total: frames - at}
+	stream := &arrangementPCMStream{done: make(chan struct{}), free: make(chan []float32, 8), ready: make(chan []float32, 8), total: frames - at, loop: len(looping) > 0 && looping[0]}
 	for i := 0; i < 8; i++ {
 		stream.free <- make([]float32, 4096)
 	}
@@ -54,7 +55,13 @@ func newArrangementPCMStream(path string, at, frames int64) (*arrangementPCMStre
 	go func() {
 		defer file.Close()
 		remaining := frames - at - int64(n/4)
-		for remaining > 0 {
+		for remaining > 0 || stream.loop {
+			if remaining <= 0 {
+				if _, e := file.Seek(0, io.SeekStart); e != nil {
+					return
+				}
+				remaining = frames
+			}
 			var block []float32
 			select {
 			case <-stream.done:
@@ -86,7 +93,7 @@ func newArrangementPCMStream(path string, at, frames int64) (*arrangementPCMStre
 	return stream, nil
 }
 func (s *arrangementPCMStream) sample() float32 {
-	if s.consumed.Load() >= s.total {
+	if !s.loop && s.consumed.Load() >= s.total {
 		return 0
 	}
 	if s.cursor >= len(s.current) {
@@ -113,6 +120,7 @@ func (s *arrangementPCMStream) sample() float32 {
 type arrangementTransport struct {
 	streams      []*arrangementPCMStream
 	start, total float64
+	loop         bool
 	once         sync.Once
 }
 
@@ -142,9 +150,12 @@ func (e *nativeEngine) ArrangementPreviewStatus() ArrangementPreviewStatus {
 	}
 	stream := transport.streams[0]
 	position := transport.start + float64(stream.consumed.Load())/sampleRate
+	if transport.loop {
+		return ArrangementPreviewStatus{Playing: true, Position: math.Mod(position, transport.total), Duration: transport.total}
+	}
 	return ArrangementPreviewStatus{Playing: position < transport.total-.00001, Position: min(position, transport.total), Duration: transport.total}
 }
-func (e *nativeEngine) playArrangementPreview(path string, start float64) error {
+func (e *nativeEngine) playArrangementPreview(path string, start float64, looping ...bool) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if !e.running.Load() || len(e.renders) == 0 {
@@ -158,9 +169,9 @@ func (e *nativeEngine) playArrangementPreview(path string, start float64) error 
 	if math.IsNaN(start) || math.IsInf(start, 0) || start < 0 || start >= float64(frames)/sampleRate {
 		return errors.New("Choose a position inside the arrangement")
 	}
-	transport := &arrangementTransport{start: start, total: float64(frames) / sampleRate}
+	transport := &arrangementTransport{start: start, total: float64(frames) / sampleRate, loop: len(looping) > 0 && looping[0]}
 	for range e.renders {
-		stream, e := newArrangementPCMStream(path, int64(start*sampleRate), frames)
+		stream, e := newArrangementPCMStream(path, int64(start*sampleRate), frames, transport.loop)
 		if e != nil {
 			transport.close()
 			return e

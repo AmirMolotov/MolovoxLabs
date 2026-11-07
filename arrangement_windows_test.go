@@ -299,3 +299,33 @@ func TestRemoveArrangementMediaDeletesInstancesButPreservesOriginalAndOtherAsset
 		t.Fatal(saved, err)
 	}
 }
+
+func TestArrangementNativeLoopRepeatsFromSourceStartAfterSeek(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "loop.f32")
+	raw := make([]byte, 400)
+	for i := 0; i < 100; i++ {
+		binary.LittleEndian.PutUint32(raw[i*4:], math.Float32bits(float32(i+1)/100))
+	}
+	os.WriteFile(path, raw, 0600)
+	stream, err := newArrangementPCMStream(path, 40, 100, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer close(stream.done)
+	deadline := time.Now().Add(time.Second)
+	for len(stream.ready) < 4 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	for i := 0; i < 240; i++ {
+		want := float32((40+i)%100+1) / 100
+		if got := stream.sample(); got != want {
+			t.Fatalf("Loop sample %d got %f want %f", i, got, want)
+		}
+	}
+	e := &nativeEngine{}
+	e.arrangement.Store(&arrangementTransport{streams: []*arrangementPCMStream{stream}, start: 40.0 / 48000, total: 100.0 / 48000, loop: true})
+	status := e.ArrangementPreviewStatus()
+	if !status.Playing || math.Abs(status.Position-80.0/48000) > 1e-7 {
+		t.Fatal("Loop position did not wrap", status)
+	}
+}
