@@ -7,3 +7,5 @@
 .sampler-record-mode{display:grid;grid-template-columns:auto minmax(220px,1fr);gap:12px 18px;align-items:center;margin:18px 0;padding:16px;border:1px solid #ffffff18;border-radius:10px}.sampler-record-mode label{font-size:12px;color:#c0d5b5}.sampler-record-mode select{margin:0}.sampler-record-mode .hint{grid-column:1/-1;margin:0;line-height:1.6}@media(max-width:650px){.sampler-record-mode{grid-template-columns:1fr}}
 .patch-node.clip{border-color:#739b65}.patch-node.clip .patch-node-kind{color:#cae6b5}.patch-node .clip-add-effect{width:100%;min-width:0;margin:14px 0 0;padding-top:9px;padding-bottom:9px;font-size:11px}.sound-pad-bottom,.sampler-pad-footer{flex-wrap:wrap;gap:8px}
 .toolbar-actions{flex-wrap:wrap}.sound-record-panel{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px}.sound-record-panel[hidden]{display:none}.sound-record-panel label{font-size:12px;color:#c5d7c5}.sound-record-panel input{flex:1;min-width:160px}.sound-record-panel p{width:100%;margin:0}
+
+.trim-selection{cursor:grab;pointer-events:auto;touch-action:none}.trim-track:active .trim-selection{cursor:grabbing}

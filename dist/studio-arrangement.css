@@ -3,3 +3,7 @@
 .arr-clip-pattern svg{width:100%;height:100%;display:block}
 
 .arr-track-remove{float:right;border:0;background:transparent;padding:0 5px;color:#cba69c;font-size:18px;line-height:24px;cursor:pointer}.arr-track-remove:hover{color:#ffb5a5}
+
+.arr-drag-ghost{position:fixed;z-index:10000;pointer-events:none;max-width:300px;padding:12px 16px;border:1px solid #c4ed9e;border-radius:10px;background:#20362a;box-shadow:0 10px 30px #0008;color:#e6ffce;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.arr-track.arr-drop-target{background-color:#b9e78d25;box-shadow:inset 0 0 0 2px #b9e78d}.arr-send-pad{cursor:grab!important;touch-action:none}.arr-send-pad:active,.arr-media-item:active{cursor:grabbing}
+
+.sound-pad-bottom:has(.arr-send-pad),.sampler-pad-footer:has(.arr-send-pad){flex-wrap:wrap}.arr-send-pad{white-space:nowrap}
