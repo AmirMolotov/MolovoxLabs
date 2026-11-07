@@ -4,11 +4,11 @@ Built by **Molotov**.
 
 Molovox Labs uses the existing %APPDATA%/QuietLab library directory for compatibility with earlier releases.
 
-Open **MolovoxLabs.exe** in this folder. It is the only application executable. No login or Docker is required. Windows x64 and Microsoft Edge WebView2 Runtime are required. WASAPI capture, mixing, built-in effects, global shortcuts and MIDI run in Go. VST3 effects use the embedded native host; WebView2 displays the interface.
+Download **MolovoxLabs.exe** from this repository’s **Releases** page, then open it. It is the only application executable. No login or Docker is required. Windows x64 and Microsoft Edge WebView2 Runtime are required. WASAPI capture, mixing, built-in effects, global shortcuts and MIDI run in Go. VST3 effects use the embedded native host; WebView2 displays the interface.
 
 ## Installation
 
-1. Use Windows x64 and open **MolovoxLabs.exe**. No GPT/OpenAI account, login, Docker, Go, Node or Python is needed to run the prebuilt app.
+1. On Windows x64, download **MolovoxLabs.exe** from [GitHub Releases](https://github.com/AmirMolotov/MolovoxLabs/releases), then open it. No GPT/OpenAI account, login, Docker, Go, Node or Python is needed to run the prebuilt app.
 2. Install [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) if it is not already installed. This supplies the desktop interface.
 3. Install [FFmpeg 7 or newer](https://ffmpeg.org/download.html), including **ffmpeg.exe and ffprobe.exe**, for audio/video importing, conversion, thumbnails, waveform decoding, arrangement previews and exports. Both programs must be on PATH, or installed using the Windows WinGet `Gyan.FFmpeg` package, which Molovox Labs detects automatically. A Windows installation command is `winget install --id Gyan.FFmpeg --exact`. Restart Molovox Labs after installation. FFmpeg is a codec/processing tool; Molovox Labs does not bundle or install it.
 4. **Optional, for sending the mix to Discord or another app:** install [VB-AUDIO Virtual Cable (VB-CABLE)](https://vb-audio.com/Cable/) using its Windows installer and follow its administrator/restart instructions. Select **CABLE Input** as a Molovox Labs output and **CABLE Output** as the other app's microphone. Select headphones as another Molovox Labs output to monitor the mix. VB-CABLE is unnecessary for ordinary headphone/speaker playback. Each computer that needs a virtual microphone needs its own virtual audio driver; people listening in Discord do not need it.
@@ -103,3 +103,9 @@ Equalizer chart controls: click empty chart space to add a band at that frequenc
 EQ points are positioned on the combined native filter response. Adding or dragging a point targets that combined level, compensating for overlapping neighboring bands; the band gain field shows the underlying individual filter gain. Arrangement loop audio is streamed repeatedly in the native engine with bounded buffers, including when seeking into a running loop.
 
 Arrangement and Patch bay share a top-right full-screen control with matching expand/restore icons and accessible labels; Escape exits full screen.
+
+## Git and personal media
+
+The source repository excludes imported audio/video/images, exported soundboard packages, recordings, decoded media caches, local profiles, preferences, credentials and generated executables. The app normally stores personal media under `%APPDATA%/QuietLab`, outside this checkout. `.gitignore` also covers those files if a custom local profile or imported file is placed inside the project. Application logo/icon assets, source code, third-party notices and the embedded native bridge remain tracked so the project can be built.
+
+`MolovoxLabs.exe` is distributed as a GitHub Release attachment rather than committed to source history. Before publishing, use `git status --short` to review staged changes. Ignore rules do not remove files that were already committed; no imported media was found in this repository's tracked files or history when these rules were added.
