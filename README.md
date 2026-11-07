@@ -1,111 +1,35 @@
 # Molovox Labs
 
+A Windows app for soundboards, video samples and live audio. Mix your microphone with clips, add effects, and record a performance or put one together in the arrangement editor. Keyboard shortcuts and MIDI let you trigger clips while gaming or streaming.
+
 Built by **Molotov**.
-
-Molovox Labs uses the existing %APPDATA%/QuietLab library directory for compatibility with earlier releases.
-
-Download **MolovoxLabs.exe** from this repository’s **Releases** page, then open it. It is the only application executable. No login or Docker is required. Windows x64 and Microsoft Edge WebView2 Runtime are required. WASAPI capture, mixing, built-in effects, global shortcuts and MIDI run in Go. VST3 effects use the embedded native host; WebView2 displays the interface.
 
 ## Installation
 
-1. On Windows x64, download **MolovoxLabs.exe** from [GitHub Releases](https://github.com/AmirMolotov/MolovoxLabs/releases), then open it. No GPT/OpenAI account, login, Docker, Go, Node or Python is needed to run the prebuilt app.
-2. Install [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) if it is not already installed. This supplies the desktop interface.
-3. Install [FFmpeg 7 or newer](https://ffmpeg.org/download.html), including **ffmpeg.exe and ffprobe.exe**, for audio/video importing, conversion, thumbnails, waveform decoding, arrangement previews and exports. Both programs must be on PATH, or installed using the Windows WinGet `Gyan.FFmpeg` package, which Molovox Labs detects automatically. A Windows installation command is `winget install --id Gyan.FFmpeg --exact`. Restart Molovox Labs after installation. FFmpeg is a codec/processing tool; Molovox Labs does not bundle or install it.
-4. **Optional, for sending the mix to Discord or another app:** install [VB-AUDIO Virtual Cable (VB-CABLE)](https://vb-audio.com/Cable/) using its Windows installer and follow its administrator/restart instructions. Select **CABLE Input** as a Molovox Labs output and **CABLE Output** as the other app's microphone. Select headphones as another Molovox Labs output to monitor the mix. VB-CABLE is unnecessary for ordinary headphone/speaker playback. Each computer that needs a virtual microphone needs its own virtual audio driver; people listening in Discord do not need it.
-5. **Optional:** connect a MIDI controller for MIDI triggers, or install/licence Windows x64 VST3 effects for third-party effects. Keyboard shortcuts and built-in effects do not require MIDI hardware or VST plugins.
+1. Download **MolovoxLabs.exe** from [Releases](https://github.com/AmirMolotov/MolovoxLabs/releases) and run it on **Windows x64**. No account needed.
+2. Install [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) if it isn't already on your computer.
+3. Install [FFmpeg 7 or newer](https://ffmpeg.org/download.html) for media importing, previews and exports. Include both `ffmpeg` and `ffprobe` on PATH, or use:
 
-The single MolovoxLabs.exe uses these separately installed components; it does not create its own Windows virtual audio driver. User sounds and preferences stay under `%APPDATA%/QuietLab` when the executable is updated. Building from source has additional tools listed under Storage and development.
+   ```powershell
+   winget install --id Gyan.FFmpeg --exact
+   ```
 
-## Soundboards
+   Restart the app after installing.
 
-Choose a board, then Add sound to import audio or video, trim it, and save a new sound pad. Imported sources can be up to 8 GB; each saved pad can be up to 120 seconds. Click a pad to play; click a playing pad to stop it. Pads fill left to right with playback progress and show the time remaining. Use Record sound and Stop & save to add a microphone recording to the current board, up to two minutes. It captures the selected microphone mix before effects or monitoring, without recording other pads. Each sound accepts multiple global keyboard and MIDI triggers. Open its trigger editor, click Add shortcut and press a modified key or function key. For MIDI, select a connected controller in that dialog, click Learn MIDI, then play a note or controller; assignments save immediately for both sound and video pads. Sound triggers apply only to the selected board. Each sound/video pad has an Effects action: it opens its dedicated Patch bay source, where Add effect to this pad creates and wires a separate effect instance. You can add a chain of effects or wire existing instances manually. Individually routed pads are removed from the broad board mix to prevent a second dry copy. Pad-owned effects are not inserted into the microphone chain when Patch bay is off.
+To send your mix to Discord or another app, install [VB-CABLE](https://vb-audio.com/Cable/). Choose **CABLE Input** as an output in Molovox Labs and **CABLE Output** as Discord's microphone. You can select your headphones too, so you hear the mix. VB-CABLE is optional for normal playback.
 
-Board options exports/imports `.qlboard` packages containing the original audio files and assignments. Individual source audio can also be exported from a sound's shortcut editor. Delete this board asks for confirmation, removes copied audio and shortcuts, and stops its clips. Original files, exports and audio shared with another board are preserved. Deleting the last board creates a new empty board.
+## Your files
 
-## Video sampler
+Sounds and settings stay on your computer in `%APPDATA%/QuietLab`. Updating the app keeps them. Imported media, recordings and local settings are excluded from Git.
 
-The Video sampler tab has Clip editor and Video pads. Video pads includes a larger live stage preview beside the pads, mirroring the recording stage and its Single/Layered playback mode. Live recording, saved performances and arrangement exports are in the separate Recording tab.
+## Building from source
 
-Import local video sources up to 8 GB. MP4, MKV, AVI, MOV, WebM, MPEG, WMV and other formats are decoded using an installed FFmpeg/ffprobe (PATH or the Windows WinGet FFmpeg installation). Unsupported browser video tracks are converted to a seekable H.264 MP4 playback copy. Sources and decoded PCM/peak caches stay in the local library; long audio is streamed to disk rather than decoded into browser memory. Soundboard has one Add sound action, which opens the same audio/video trimming workflow. Saved pads remain limited to 0.05–120 seconds each.
+You'll need Go 1.27+, Node.js, Python, and Visual Studio C++ Build Tools with the Windows SDK.
 
-Wheel zooms at the mouse, Ctrl+wheel moves horizontally, and hovering or dragging across the video timeline previews that frame. Waveforms are read at the visible time range from decoded source samples; thumbnails are regenerated for the visible range at display resolution. Trim handles are thin green/orange edges. Drag inside the selected range to slide both trim points together without changing the selection length, in either the video or audio editor. The range stops at the beginning and end of the source. Clicking without dragging still auditions that position. Right-click an audio waveform or video timeline and choose Bring in here or Bring out here to move that boundary to the clicked position. If necessary, the opposite boundary moves to keep a valid selection. Click the audio waveform or video timeline to preview from that position; dragging scrubs without starting playback. In either trim editor, press Space to play from the trim start and continuously loop the selected range; press Space again or Stop/Pause to stop. Space keeps its normal behavior in text fields and shortcut learning. The Video sampler tab contains Clip editor and Video pads. The performance stage is in Recording → Live recording. Saving a video sample extracts its audio and cropped thumbnail on the Go side.
+```powershell
+.\scriptsuild-windows.ps1 -Run
+```
 
-Video pads show thumbnails, live video and progress. Playing video pads share the performance stage in an automatic grid: two are side by side, four form a 2×2 layout, and larger groups fill additional rows and columns. Each tile preserves its crop and aspect ratio. Tiles reflow when videos start or stop, and performance recordings capture the same grid; audio from all playing samples mixes together. Keyboard/MIDI assignments work for the selected video board alongside the selected audio soundboard. Audio is trimmed to mono 48 kHz WAV and played through the native engine, so device choices, volume and Patch bay effects also apply to video samples. Video elements stay muted to prevent duplicate browser audio. Source/crop references preserve the original video; removing a pad does not delete its source.
+Set `VCVARS64` to your Visual Studio `vcvars64.bat` path if the script can't find it. The script runs the checks and builds one `MolovoxLabs.exe`.
 
-In **Recording → Live recording**, choose the native output mix and recording mode, optionally name the performance, and press Record performance. **Layered** mixes playing clips and displays simultaneous videos in a grid. **Single clip** keeps only the most recently triggered audio/video clip: each new pad stops the previous clip, and only its video is visible. Starting a Single clip recording keeps the newest active clip; ending/aborting recording keeps the currently selected preview/playback mode. The mode is remembered and controls the live preview and clip playback immediately, before recording as well as during recording. In Layered mode, click a video pad again to add another independently playing copy; Shift-click stops all copies of that pad. Copies are arranged as separate grid tiles. Microphone audio still follows your output routing in either mode. Stop and save writes a WebM recording containing the video stage and that output's processed audio, including routed microphones, soundboards and effects. Recording is limited to 15 minutes / 500 MB. Use Your performances in Recording to preview, Save as, or Make samples from a saved performance. Recordings use streamed chunks rather than keeping a full performance in memory. Interrupted recordings with saved chunks are recovered on the next launch.
-
-This records the sampler performance, not the desktop or webcam. Existing .qlboard packages export audio boards; video sampler boards currently depend on the local source library. Export video content by recording a performance. Sources and recordings are stored under %APPDATA%/QuietLab/sampler. All HTTP media/upload routes are restricted to the current local app session and same-origin writes.
-
-Browser checks in tests/browser/sampler-smoke.html verify real PCM worklet audio, WebM encoding, video/audio decoding and cropped thumbnails. Run its small localhost server for the interactive check. Native tests verify stored sample ranges/crops, media range requests, upload boundaries, selected post-effect audio capture, recordings, recovery and shortcut scope.
-
-## Arrangement and recording
-
-**Arrangement** is a playlist with multiple tracks. Drag existing soundboard/video pads from its Media library onto a track, or drag the **↗ Arrangement** control on a pad in Soundboard or Video sampler. The arrangement opens automatically during the drag; drop onto the highlighted track. Click the same control to add an independent instance at the playhead. You can also import/drop audio, images and videos (up to 8 GB per source). Click a media item to add it at the playhead on the first track. Drag clips horizontally to change timing and vertically to change tracks. Pull either thin edge to trim; the inspector also provides exact position, source in, length and volume. Duplicate/Delete, Undo/Redo, track names/removal, BPM and quarter-beat snapping are available. Images default to five seconds and can be extended. Source audio/video clips trim within their source duration. Wheel zooms under the pointer, Ctrl+wheel pans. Click the ruler to seek; tap Space to play/pause the loop, or hold Space and drag to pan across tracks. Space toggles pause/resume at the current position, keeping the native loop mode. Stop returns to the beginning. Use Full screen to spread the playlist across the window with its preview beside it. Track names occupy a separate 40-pixel gutter outside the footage; headers never cover the horizontal timeline. Mute controls and the zoom slider are removed; wheel zoom remains. The full-screen media sidebar scrolls independently. Image and video tiles show their frame thumbnails immediately. The left media library has preview buttons for sound/video pads and imported files; previews temporarily replace the right-hand arrangement preview, use native audio and show up to the first 30 seconds without adding a clip. Stopping or finishing the preview restores the arrangement view. Delete an imported file with its × control; confirmation also removes its placed clips and clears undo history, while preserving the original file and soundboard pad. Projects save automatically in the local library, including clip layout and imported media.
-
-Playback prepares a rendered preview with progress and cancellation, then streams its audio through the native engine to selected outputs. The video stays muted to avoid duplicate browser audio. Edits invalidate the cached preview. Arrangement imports and copied pads own separate media files, so removing the original pad or source file does not break the arrangement. The arrangement supports a maximum duration of 24 hours; large projects need enough local disk space for media, rendered preview and PCM audio. Preview audio uses bounded buffers instead of loading the entire mix into memory.
-
-**Recording** has two modes of work: **Live recording** captures the existing live pad performance and native output mix, and **Arrangement export** renders the saved playlist to 1280×720/30 fps MP4 (H.264/AAC) or mono 48 kHz WAV. You can switch tabs to trigger pads while a live recording runs. In arrangements, simultaneous audio clips mix using their individual volumes; upper video/image tracks appear in front of lower tracks, with each picture fitted to the output frame. Arrangement renders are independent of the live microphone and Patch bay effects. Exports show progress and support cancellation; a cancelled render leaves an existing destination file intact. Live performance recordings still appear under Your performances in Recording.
-
-## Effects in Patch bay
-
-Select a built-in effect from the dropdown to add it immediately. Effects include gain, high-pass, low-pass, gate, compressor, pitch, noise reduction, added white noise, reverb, echo, chorus, distortion and robot. Define effect instances, reorder them, adjust their settings, and assign keyboard/MIDI toggles to individual effects, groups or the entire effect chain.
-
-When Patch bay routing is off, the effect list processes the microphone and soundboards play dry. When Patch bay is on, cable connections determine which sources each effect processes. You can create two instances of the same effect with different settings.
-
-## Patch bay
-
-Use the **Patch bay** tab to connect sources, effect instances and outputs with cables.
-
-1. Define effects in the Effects and parameters section below the Patch bay rack.
-2. Select **Soundboards → effects** for a ready-to-use layout, or enable **Use patch bay routing** and add nodes yourself.
-3. Drag a right-hand output socket to a left-hand input socket. Clicking the two sockets also connects them; keyboard users can activate the sockets in sequence.
-4. Click a cable to unplug it. Right-click or press Escape to cancel an unfinished cable or node move. Drag node headers to arrange the rack. Wheel zooms at the cursor; Ctrl+wheel pans sideways. Node positions and cables are remembered automatically.
-
-Quick Start layouts stay linked to the Effects library: adding, removing or reordering effects updates the active layout automatically. Manual cable/node edits switch to a custom layout, which is preserved. Older recognizable Quick Start layouts are migrated automatically.
-
-Sources can be the microphone mix, all soundboards, or a particular board. Output nodes can feed all selected devices or one specific selected device, such as CABLE Input or monitoring headphones. Select physical devices in Settings first. Multiple cables into an effect sum their sources. An effect's output can branch to multiple destinations. Each effect instance is placed once; create another definition if independent processing is needed.
-
-The top microphone switch still mutes the microphone source, and master output/clip volumes still apply. Each source sample and effect node is evaluated once per device/frame; branching does not advance clip playback twice. Reverb and echo tails may continue after a source pad's progress ends. Cycles are rejected to prevent feedback loops. Effects, nodes and cables have no fixed count limit. Processing capacity depends on the computer and the plugins in use.
-
-## Devices, MIDI and settings
-
-Changes apply immediately; no Apply button. Microphones, gains, outputs, startup listening, MIDI input and global shortcuts are remembered locally. Multiple microphones are averaged; up to eight outputs can be selected. Separate hardware devices may have different playback timing. Input/output waveforms and levels remain visible across tabs.
-
-For Discord with VB-Cable: select CABLE Input as a Molovox Labs output and CABLE Output as Discord's microphone. Add headphones as another output for monitoring. The app does not install a virtual audio driver.
-
-## VST3
-
-In Patch bay → Effects and parameters, use Scan plugins, then select a VST3 effect to add it. The plugin's native editor and a searchable generic Parameters editor are available on its card. Standard Windows VST3 locations and a VST3 folder beside the executable are scanned. Additional folders can be listed in Settings. Installed plugin metadata and plugin states are saved locally; plugins themselves must be installed/licensed separately and are not included in board exports.
-
-Supports Windows x64 VST3 audio effects with one mono/stereo input and one mono/stereo output at 48 kHz. VST2, instruments, plugin MIDI input and sidechains are unsupported. Stereo plugin output is folded into the app's mono signal path. The 128-sample bridge adds about 2.7 ms plus the plugin's reported latency. Pitch adds about 44 ms average delay; spectral noise reduction adds about 11 ms. These effects modify recorded microphone signals; this app does not provide headphone active noise cancellation.
-
-Scanning runs one module per child process with a 20-second timeout and reports failures. Live plugin processing/editors run inside the app, so a faulty live plugin may crash it. A processor instance is used per output; parameter edits propagate to all outputs. Plugin-specific external-resource/non-parameter changes may require restarting an effect to synchronize instances. Plugins requesting I/O or latency changes show a restart notice. Missing/incompatible plugins are explicitly marked bypassed.
-
-## Storage and development
-
-This folder is the canonical source repository. User preferences, soundboards, copied audio and the WebView2 profile are stored separately under `%APPDATA%/QuietLab`. The embedded VST3 bridge is extracted to the local user cache. Updating the executable preserves the library.
-
-Build with **scripts/build-windows.ps1**. It builds native dependencies and the icon resource, runs Go and JavaScript behavior tests, checks the UI, and replaces only `MolovoxLabs.exe`. If that app was running, it is reopened. Pass `-Run` to open it after a first build. Go, Node, Python and Visual Studio C++ build tools with a Windows SDK are required. Set `VCVARS64` if your Visual Studio installation differs from the included default. Icon assets are committed; regenerating them with scripts/make-icon.py requires Pillow.
-
-Source, icon assets, the icon resource and the embedded bridge DLL are tracked in Git; application executables, test output, user data, generated compiler intermediates and old packages are ignored. The Steinberg VST3 interface sources and MIT license are vendored in third_party/vst3/pluginterfaces. Dependency notices are in THIRD-PARTY-NOTICES.txt.
-
-Checks cover native filters, graph routing/fan-in/fan-out, soundboard effects, feedback rejection, saved layouts, waveform progress, board archive audio, deletion boundaries, trigger scope, UI selection/routing behavior and native VST3 processing/state restoration. The installed SerumFX plugin was also checked for audio processing, parameter discovery, state saving and opening its native editor. Physical MIDI-controller operation still needs hardware verification.
-
-Loading feedback: startup and blocking audio/file/plugin operations show a branded loading screen before work begins. Background scanning, saving and audio updates show a persistent activity indicator outside recording. During active performance recording, loading overlays and activity spinners are suppressed and tasks skip the loader-paint delay. Video tiles use their thumbnails while a decoder is being prepared, rather than a loading message. Settings requests are serialized and rapid effect/routing edits are coalesced so older updates cannot replace newer choices.
-
-
-Selecting the Patch bay tab opens its dedicated full-screen graph workspace. Use **Open full-screen Patch bay** to return to it after exiting. Drag the background or hold Space and drag to pan freely in any direction, use the wheel to zoom, and choose **Fit graph** to see the whole rack. Escape exits this view after cancelling any active cable or node gesture. Effect parameters remain editable on each node.
-
-The Molovox Labs icon was generated with the built-in imagegen tool. Its source is `assets/molovox-labs-source.png`. The prompt requested a bold abstract M merging an audio waveform and a subtle flame, lime and cyan highlights on a dark green rounded-square tile, readable at small sizes. Run `scripts/make-icon.py` to regenerate the PNG and multi-size Windows icon from that source.
-
-Equalizer chart controls: click empty chart space to add a band at that frequency/gain, click an existing point to select it, drag it to reshape it, and right-click the point to remove it. Wheel adjusts the selected band width (Q). The native EQ supports up to eight bands per instance; multiple EQ instances can be chained.
-
-EQ points are positioned on the combined native filter response. Adding or dragging a point targets that combined level, compensating for overlapping neighboring bands; the band gain field shows the underlying individual filter gain. Arrangement loop audio is streamed repeatedly in the native engine with bounded buffers, including when seeking into a running loop.
-
-Arrangement and Patch bay share a top-right full-screen control with matching expand/restore icons and accessible labels; Escape exits full screen.
-
-## Git and personal media
-
-The source repository excludes imported audio/video/images, exported soundboard packages, recordings, decoded media caches, local profiles, preferences, credentials and generated executables. The app normally stores personal media under `%APPDATA%/QuietLab`, outside this checkout. `.gitignore` also covers those files if a custom local profile or imported file is placed inside the project. Application logo/icon assets, source code, third-party notices and the embedded native bridge remain tracked so the project can be built.
-
-`MolovoxLabs.exe` is distributed as a GitHub Release attachment rather than committed to source history. Before publishing, use `git status --short` to review staged changes. Ignore rules do not remove files that were already committed; no imported media was found in this repository's tracked files or history when these rules were added.
+See [third-party notices](THIRD-PARTY-NOTICES.txt) for dependency licences.
