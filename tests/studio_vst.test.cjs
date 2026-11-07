@@ -28,9 +28,9 @@ test('selecting a scanned plugin adds it immediately and preserves its identity'
  assert.equal(h.micFilters.length,1);const filter=h.micFilters[0];assert.equal(filter.Kind,'vst3');assert.equal(filter.PluginPath,plugin.Path);assert.equal(filter.ClassID,plugin.ClassID);assert.equal(filter.Enabled,true);
  assert.equal(h.configured,1);assert.equal(h.saved,1);assert.equal(element('vstSelect').value,'');assert.equal(h.filterTitle(filter),'Example FX');
 });
-test('plugin selection respects the filter-chain limit',async()=>{
+test('plugin selection supports more than eight effects',async()=>{
  const {h,element}=harness();await h.initVST({});for(let i=0;i<8;i++)h.micFilters.push({Kind:'gain'});
- element('vstSelect').value='0';await element('vstSelect').onchange();assert.equal(h.micFilters.length,8);assert.equal(h.configured,0);assert.match(h.lastMessage,/eight/);
+ element('vstSelect').value='0';await element('vstSelect').onchange();assert.equal(h.micFilters.length,9);assert.equal(h.configured,1);assert.equal(h.lastMessage,'');
 });
 test('scan uses custom folders and exposes isolated failures without hiding valid plugins',async()=>{
  const {h,element}=harness();element('vstFolders').value=' D:\\Effects \n\n E:\\VST3';await element('scanVST').onclick();

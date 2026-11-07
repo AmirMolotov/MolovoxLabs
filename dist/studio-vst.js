@@ -17,7 +17,7 @@ $('scanVST').onclick=async()=>{
 $('vstFolders').onchange=save;
 $('vstSelect').onchange=async()=>{
  const index=$('vstSelect').value;$('vstSelect').value='';const plugin=vstCatalog[Number(index)];if(index===''||!plugin)return;
- if(micFilters.length>=8){message('Maximum eight microphone filters.');return;}
+
  const filter={ID:crypto.randomUUID(),Kind:'vst3',Enabled:true,Hotkeys:[],MIDIs:[],PluginPath:plugin.Path,ClassID:plugin.ClassID,PluginName:plugin.Name,VSTState:''};
  await withLoading('Loading '+plugin.Name+'…',async()=>{micFilters.push(filter);renderFilters();renderGroups();await configure();await save();refreshVSTCards();},true);
 };

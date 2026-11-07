@@ -65,7 +65,7 @@ function renderGroups(){
   actions.append(toggle,key,remove);row.append(name,actions);$('filterGroups').append(row);
  }
 }
-$('filterKind').onchange=()=>{const kind=$('filterKind').value;$('filterKind').value='';if(!filterDefaults[kind])return;if(micFilters.length>=8){message('Maximum eight microphone filters.');return;}micFilters.push({ID:crypto.randomUUID(),Kind:kind,Enabled:true,Hotkeys:[],MIDIs:[],...filterDefaults[kind]});renderFilters();renderGroups();configure();};
+$('filterKind').onchange=()=>{const kind=$('filterKind').value;$('filterKind').value='';if(!filterDefaults[kind])return;micFilters.push({ID:crypto.randomUUID(),Kind:kind,Enabled:true,Hotkeys:[],MIDIs:[],...filterDefaults[kind]});renderFilters();renderGroups();configure();};
 $('filtersActive').onchange=()=>{bypassFilters=!$('filtersActive').checked;renderFilters();configure();};
 $('allFilterShortcuts').onclick=()=>openTriggerEditor('@all');
 $('createGroup').onclick=async()=>{

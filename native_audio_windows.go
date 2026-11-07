@@ -22,6 +22,7 @@ const scopeSize = 256
 type AudioOptions struct {
 	Patch         PatchBay
 	patchProgram  *patchProgram
+	filterChains  []*micFilterChain
 	BypassFilters bool
 	InputGains    map[string]float32
 	Filters       []MicFilter
@@ -268,7 +269,21 @@ func (e *nativeEngine) Configure(o AudioOptions) error {
 	if o.Volume < 0 || o.Volume > 1 || o.DelayMS < 0 || o.DelayMS > 50 || math.IsNaN(float64(o.Volume)) || math.IsNaN(float64(o.DelayMS)) {
 		return errors.New("Invalid audio controls")
 	}
-	e.vst.configure(o.Filters, int(e.outputCount.Load()))
+	outputs := max(1, int(e.outputCount.Load()))
+	previous := e.options.Load()
+	o.filterChains = make([]*micFilterChain, outputs)
+	nodes := 0
+	if compiled != nil {
+		nodes = len(compiled.steps)
+	}
+	for i := range o.filterChains {
+		var old *micFilterChain
+		if previous != nil && i < len(previous.filterChains) {
+			old = previous.filterChains[i]
+		}
+		o.filterChains[i] = prepareFilterChain(o.Filters, old, nodes)
+	}
+	e.vst.configure(o.Filters, outputs)
 	e.options.Store(&o)
 	return nil
 }
@@ -389,6 +404,11 @@ func (e *nativeEngine) render(r *renderEndpoint, output []byte, frames int, prim
 		if live, ok := o.InputGains[c.ID]; ok {
 			r.liveGains[i] = live
 		}
+	}
+	if r.index < len(o.filterChains) {
+		r.filters = *o.filterChains[r.index]
+	} else if len(r.filters.slots) != len(o.Filters) {
+		r.filters = *prepareFilterChain(o.Filters, &r.filters, 0)
 	}
 	rack := e.vst.current.Load()
 	r.filters.vstVoice = r.index

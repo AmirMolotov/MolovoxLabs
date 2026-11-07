@@ -57,19 +57,59 @@ type micFilterState struct {
 	eq                             [maxEQBands]eqBand
 	eqCount                        int
 }
+
+// Slots retain their identity across configuration changes. Large DSP buffers
+// are allocated only for effects that need them, before publishing a live graph.
+type micFilterSlot struct {
+	id, kind string
+	state    micFilterState
+	pitch    *pitchShifter
+	noise    *noiseReducer
+	effect   *voiceEffect
+}
 type micFilterChain struct {
-	vstSlots  [8]*vstUnit
-	vstVoice  int
-	states    [8]micFilterState
-	pitches   [8]pitchShifter
-	denoisers [8]noiseReducer
-	effects   [8]voiceEffect
+	slots    []*micFilterSlot
+	vstSlots []*vstUnit
+	vstVoice int
+	values   []float32
+}
+
+func newMicFilterSlot(f MicFilter) *micFilterSlot {
+	slot := &micFilterSlot{id: f.ID, kind: f.Kind}
+	switch f.Kind {
+	case "pitch":
+		slot.pitch = &pitchShifter{}
+	case "noise":
+		slot.noise = &noiseReducer{}
+	case "reverb", "echo", "chorus", "distortion", "robot":
+		slot.effect = &voiceEffect{}
+	}
+	return slot
+}
+func prepareFilterChain(filters []MicFilter, previous *micFilterChain, nodes int) *micFilterChain {
+	chain := &micFilterChain{slots: make([]*micFilterSlot, len(filters)), vstSlots: make([]*vstUnit, len(filters)), values: make([]float32, nodes)}
+	existing := map[string]*micFilterSlot{}
+	if previous != nil {
+		for _, slot := range previous.slots {
+			if slot.id != "" {
+				existing[slot.id] = slot
+			}
+		}
+	}
+	for i, filter := range filters {
+		slot := existing[filter.ID]
+		if slot == nil && filter.ID == "" && previous != nil && i < len(previous.slots) {
+			slot = previous.slots[i]
+		}
+		if slot == nil || slot.kind != filter.Kind {
+			slot = newMicFilterSlot(filter)
+		}
+		chain.slots[i] = slot
+	}
+	return chain
 }
 
 func validateFilters(filters []MicFilter) error {
-	if len(filters) > 8 {
-		return errors.New("Maximum eight microphone filters")
-	}
 	for _, f := range filters {
 		for _, v := range []float64{f.Frequency, f.Threshold, f.Ratio, f.GainDB, f.Semitones, f.Strength, f.NoiseDB, f.NoiseLevelDB, f.Mix, f.DelayMS, f.Feedback, f.RoomSize, f.Damping, f.RateHz, f.DepthMS, f.DriveDB, f.OutputDB, f.BassDB, f.MidDB, f.TrebleDB} {
 			if math.IsNaN(v) || math.IsInf(v, 0) {
@@ -169,23 +209,33 @@ func (c *micFilterChain) sampleAt(input float32, filters []MicFilter, index int)
 	return c.process(input, filters, index, index+1, false)
 }
 func (c *micFilterChain) process(input float32, filters []MicFilter, start, end int, microphone bool) float32 {
+	// Standalone DSP callers can use a zero-value chain. Live rendering receives
+	// a fully prepared chain from Configure and never enters this allocation path.
+	if len(c.slots) != len(filters) {
+		*c = *prepareFilterChain(filters, c, len(c.values))
+	}
 	x := float64(input)
 	for i := start; i < end; i++ {
 		f := filters[i]
 		if microphone && f.ClipID != "" {
 			continue
 		}
-		s := &c.states[i]
+		slot := c.slots[i]
+		if slot.id != f.ID || slot.kind != f.Kind {
+			slot = newMicFilterSlot(f)
+			c.slots[i] = slot
+		}
+		s := &slot.state
 		if s.kind != f.Kind {
 			*s = micFilterState{kind: f.Kind}
 			if f.Kind == "expander" {
 				s.gain = 1
 			}
-			c.pitches[i] = pitchShifter{}
-			c.denoisers[i] = noiseReducer{}
 		}
 		if !f.Enabled {
-			c.effects[i].active = false
+			if slot.effect != nil {
+				slot.effect.active = false
+			}
 			if f.Kind == "eq" {
 				s.eq = [maxEQBands]eqBand{}
 				s.eqCount = 0
@@ -197,10 +247,10 @@ func (c *micFilterChain) process(input float32, filters []MicFilter, start, end 
 				s.noiseGain = 0
 			}
 			if f.Kind == "noise" {
-				c.denoisers[i].active = false
+				slot.noise.active = false
 			}
 			if f.Kind == "pitch" {
-				c.pitches[i].active = false
+				slot.pitch.active = false
 			}
 			continue
 		}
@@ -210,7 +260,7 @@ func (c *micFilterChain) process(input float32, filters []MicFilter, start, end 
 				x = float64(unit.sample(c.vstVoice, float32(x)))
 			}
 		case "reverb", "echo", "chorus", "distortion", "robot":
-			x = c.effects[i].sample(x, f)
+			x = slot.effect.sample(x, f)
 		case "addnoise":
 			// Per-filter PRNG: no locks, allocations or shared random state.
 			if s.random == 0 {
@@ -222,9 +272,9 @@ func (c *micFilterChain) process(input float32, filters []MicFilter, start, end 
 			s.noiseGain += .002 * (math.Pow(10, f.NoiseLevelDB/20) - s.noiseGain)
 			x += (float64(s.random>>8)/8388608 - 1) * math.Sqrt(3) * s.noiseGain
 		case "noise":
-			x = c.denoisers[i].sample(x, f)
+			x = slot.noise.sample(x, f)
 		case "pitch":
-			x = c.pitches[i].sample(x, f.Semitones, f.ID)
+			x = slot.pitch.sample(x, f.Semitones, f.ID)
 		case "highpass":
 			a := math.Exp(-2 * math.Pi * f.Frequency / sampleRate)
 			s.high = a * (s.high + x - s.previous)

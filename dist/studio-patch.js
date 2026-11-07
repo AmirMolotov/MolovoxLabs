@@ -1,6 +1,7 @@
 'use strict';
 let patchGraph=null,patchPending=null,patchPointer=null,patchDragging=null;
 let patchFocusView=null,patchFocusPrior=null;
+let patchCameraX=0,patchCameraY=0;
 let patchZoom=1,patchSpace=false,patchPan=null,patchSpaceUsed=false;
 const patchExpanded=new Set();
 const patchResize=typeof ResizeObserver==='function'?new ResizeObserver(sizePatchStage):null;
@@ -47,10 +48,17 @@ function patchName(node){
  return node.DeviceID?(devices?.Outputs?.find(d=>d.ID===node.DeviceID)?.Name||'Output device'):'Selected outputs';
 }
 function patchStatus(text){$('patchStatus').textContent=text||(!patchGraph?.Enabled?'Patch bay is off. Your standard microphone effects and dry soundboard routing are active.':patchGraph.Cables.length+' cables connected · changes apply automatically.');}
-function addPatchNode(node){if(patchGraph.Nodes.length>=32){patchStatus('Maximum 32 patch nodes. Remove an unused node first.');return;}patchGraph.Preset='';patchGraph.Nodes.push(node);commitPatch();}
+function placePatchNode(node){
+ const viewport=$('patchViewport');
+ if(viewport.clientWidth){
+  node.X=Math.round((viewport.clientWidth/2-patchCameraX)/patchZoom-patchWidth/2);
+  node.Y=Math.round((viewport.clientHeight/2-patchCameraY)/patchZoom-50);
+ }
+ return node;
+}
+function addPatchNode(node){node=placePatchNode(node);patchGraph.Preset='';patchGraph.Nodes.push(node);commitPatch();}
 function addPatchEffectInstance(template,x,y){
- if(patchGraph.Nodes.length>=32){patchStatus('Maximum 32 patch nodes. Remove an unused node first.');return;}
- if(micFilters.length>=8){patchStatus('The Effects library is full (eight instances). Remove an unused effect first.');return;}
+
  const filter={...template,ID:crypto.randomUUID(),Hotkeys:[],MIDIs:[]};
  if(filter.Kind==='vst3')filter.VSTState='';
  const node=patchNode('effect',{FilterID:filter.ID},x,y);
@@ -58,17 +66,17 @@ function addPatchEffectInstance(template,x,y){
  renderFilters();renderGroups();commitPatch();
 }
 function openClipEffects(clipID){
- let node=patchGraph.Nodes.find(n=>n.Kind==='clip'&&n.ClipID===clipID);if(!node){if(patchGraph.Nodes.length>=32){message('Remove an unused Patch bay node first.');return;}node=patchNode('clip',{ClipID:clipID},40,80+patchGraph.Nodes.length*25);patchGraph.Preset='';patchGraph.Nodes.push(node);}
+ let node=patchGraph.Nodes.find(n=>n.Kind==='clip'&&n.ClipID===clipID);if(!node){node=patchNode('clip',{ClipID:clipID},40,80+patchGraph.Nodes.length*25);patchGraph.Preset='';patchGraph.Nodes.push(node);}
  patchGraph.Enabled=true;openTab('patch');commitPatch();patchStatus('Add an effect on this pad’s node, or wire this pad → effects → output. Create separate effect instances for independent chains.');document.querySelector('[data-patch-node="'+node.ID+'"]')?.scrollIntoView({block:'center',inline:'center',behavior:'smooth'});
 }
 function attachClipEffect(sourceID,kind){
- if(!filterDefaults[kind])return;if(micFilters.length>=8){patchStatus('The Effects library is full (eight instances). Remove an unused effect first.');return;}
+ if(!filterDefaults[kind])return;
  const source=patchGraph.Nodes.find(n=>n.ID===sourceID&&n.Kind==='clip');if(!source)return;
- let output=patchGraph.Nodes.find(n=>n.Kind==='output'&&!n.DeviceID);const needed=output?1:2;if(patchGraph.Nodes.length+needed>32){patchStatus('Remove an unused patch node first.');return;}
+ let output=patchGraph.Nodes.find(n=>n.Kind==='output'&&!n.DeviceID);
  const filter={ID:crypto.randomUUID(),ClipID:source.ClipID,Kind:kind,Enabled:true,Hotkeys:[],MIDIs:[],...filterDefaults[kind]};micFilters.push(filter);
  let cursor=source;const seen=new Set();while(!seen.has(cursor.ID)){seen.add(cursor.ID);const edges=patchGraph.Cables.filter(c=>c.From===cursor.ID);if(edges.length!==1)break;const next=patchGraph.Nodes.find(n=>n.ID===edges[0].To);if(next?.Kind!=='effect'||patchGraph.Cables.filter(c=>c.To===next.ID).length!==1)break;cursor=next;}
- const effect=patchNode('effect',{FilterID:filter.ID},Math.min(4700,cursor.X+260),cursor.Y);patchGraph.Nodes.push(effect);const targets=patchGraph.Cables.filter(c=>c.From===cursor.ID);patchGraph.Cables=patchGraph.Cables.filter(c=>c.From!==cursor.ID);patchGraph.Cables.push({From:cursor.ID,To:effect.ID});
- if(targets.length)for(const cable of targets)patchGraph.Cables.push({From:effect.ID,To:cable.To});else{if(!output){output=patchNode('output',{DeviceID:''},Math.min(4950,effect.X+270),effect.Y);patchGraph.Nodes.push(output);}patchGraph.Cables.push({From:effect.ID,To:output.ID});}
+ const effect=patchNode('effect',{FilterID:filter.ID},cursor.X+260,cursor.Y);patchGraph.Nodes.push(effect);const targets=patchGraph.Cables.filter(c=>c.From===cursor.ID);patchGraph.Cables=patchGraph.Cables.filter(c=>c.From!==cursor.ID);patchGraph.Cables.push({From:cursor.ID,To:effect.ID});
+ if(targets.length)for(const cable of targets)patchGraph.Cables.push({From:effect.ID,To:cable.To});else{if(!output){output=patchNode('output',{DeviceID:''},effect.X+270,effect.Y);patchGraph.Nodes.push(output);}patchGraph.Cables.push({From:effect.ID,To:output.ID});}
  patchGraph.Enabled=true;patchGraph.Preset='';renderFilters();renderGroups();commitPatch();patchStatus(filterNames[kind]+' added only to '+patchName(source)+'.');
 }
 async function commitPatch(){renderPatch();await configure();}
@@ -135,7 +143,7 @@ function renderPatch(){
   if(node.Kind==='effect'){
    const f=micFilters.find(f=>f.ID===node.FilterID),row=document.createElement('div');row.className='patch-node-actions';
    const enabled=document.createElement('button');enabled.className='patch-effect-toggle'+(f.Enabled?' on':'');enabled.textContent=f.Enabled?'On':'Bypassed';enabled.onclick=()=>{f.Enabled=!f.Enabled;renderFilters();configure();};
-   const duplicate=document.createElement('button');duplicate.className='text-button';duplicate.textContent=f.Kind==='vst3'?'New instance':'Duplicate';duplicate.title=f.Kind==='vst3'?'Add another instance with default plugin settings':'Copy this effect’s settings into a new node';duplicate.onclick=()=>addPatchEffectInstance(f,Math.min(5000,node.X+260),node.Y);
+   const duplicate=document.createElement('button');duplicate.className='text-button';duplicate.textContent=f.Kind==='vst3'?'New instance':'Duplicate';duplicate.title=f.Kind==='vst3'?'Add another instance with default plugin settings':'Copy this effect’s settings into a new node';duplicate.onclick=()=>addPatchEffectInstance(f,node.X+260,node.Y);
    row.append(enabled,duplicate);card.append(row);
    const details=document.createElement('details');details.className='patch-effect-settings';details.open=patchExpanded.has(node.ID);
    const summary=document.createElement('summary');summary.textContent='Settings';details.append(summary);
@@ -152,8 +160,8 @@ function renderPatch(){
  sizePatchStage();drawPatchCables();patchStatus();
 }
 window.addEventListener('pointermove',e=>{
- if(patchPan&&patchPan.pointerID===e.pointerId){const p=patchPan;p.viewport.scrollLeft=p.left+p.x-e.clientX;p.viewport.scrollTop=p.top+p.y-e.clientY;return;}
- if(patchDragging){const d=patchDragging,node=patchGraph.Nodes.find(n=>n.ID===d.node.ID);if(!node)return;d.node=node;d.node.X=Math.round(Math.max(16,Math.min(5000,d.startX+(e.clientX-d.x)/patchZoom)));d.node.Y=Math.round(Math.max(16,Math.min(5000,d.startY+(e.clientY-d.y)/patchZoom)));d.card.style.left=d.node.X+'px';d.card.style.top=d.node.Y+'px';drawPatchCables();}
+ if(patchPan&&patchPan.pointerID===e.pointerId){const p=patchPan;patchCameraX=p.left+e.clientX-p.x;patchCameraY=p.top+e.clientY-p.y;applyPatchCamera();return;}
+ if(patchDragging){const d=patchDragging,node=patchGraph.Nodes.find(n=>n.ID===d.node.ID);if(!node)return;d.node=node;d.node.X=Math.round(d.startX+(e.clientX-d.x)/patchZoom);d.node.Y=Math.round(d.startY+(e.clientY-d.y)/patchZoom);d.card.style.left=d.node.X+'px';d.card.style.top=d.node.Y+'px';drawPatchCables();}
  else if(patchPending){const rect=$('patchStage').getBoundingClientRect();patchPointer={x:(e.clientX-rect.left)/patchZoom,y:(e.clientY-rect.top)/patchZoom};drawPatchCables();}
 });
 window.addEventListener('pointerup',e=>{
@@ -166,7 +174,7 @@ $('patchEnabled').onchange=()=>{patchGraph.Enabled=$('patchEnabled').checked;com
 $('patchSource').onchange=()=>{const choice=$('patchSource').value;if(!choice)return;if(choice.startsWith('clip:')){addPatchNode(patchNode('clip',{ClipID:choice.slice(5)},40,80+patchGraph.Nodes.length*30));return;}addPatchNode(patchNode(choice==='mic'?'mic':'board',choice==='mic'?{}:{BoardID:choice.slice(6)},40,80+patchGraph.Nodes.length*30));};
 $('patchEffect').onchange=()=>{
  const id=$('patchEffect').value;if(!id)return;$('patchEffect').value='';
- const x=350,y=120+patchGraph.Nodes.length*25;
+ const position=placePatchNode(patchNode('effect',{},350,120+patchGraph.Nodes.length*25)),x=position.X,y=position.Y;
  if(id.startsWith('new:')){const Kind=id.slice(4);addPatchEffectInstance({Kind,Enabled:true,...filterDefaults[Kind]},x,y);}
  else addPatchNode(patchNode('effect',{FilterID:id},x,y));
 };
@@ -175,11 +183,23 @@ $('patchBoardPreset').onclick=()=>{patchGraph=defaultPatch('board',true);commitP
 $('patchMicPreset').onclick=()=>{patchGraph=defaultPatch('mic',true);commitPatch();};
 $('patchClear').onclick=()=>{patchGraph.Preset='';patchGraph.Cables=[];patchPending=null;commitPatch();};
 $('patchDefine').onclick=()=>$('patchEffectsLibrary').scrollIntoView({behavior:'smooth',block:'start'});
+function applyPatchCamera(){
+ const stage=$('patchStage');
+ stage.style.transform='translate('+patchCameraX+'px, '+patchCameraY+'px) scale('+patchZoom+')';
+ $('patchZoomLabel').textContent=Math.round(patchZoom*100)+'%';
+}
 function patchWheel(event){
- if(!event.deltaY||event.target?.closest?.('.patch-vst-params'))return;event.preventDefault();if(patchDragging||patchPan)return;
+ if(!event.deltaY||event.target?.closest?.('.patch-vst-params'))return;
+ event.preventDefault();if(patchDragging||patchPan)return;
  const viewport=$('patchViewport'),stage=$('patchStage');
- if(event.ctrlKey){viewport.scrollLeft+=event.deltaY*2;}
- else{const rect=viewport.getBoundingClientRect(),x=event.clientX-rect.left-(viewport.clientLeft||0),y=event.clientY-rect.top-(viewport.clientTop||0),ratio=Math.max(.35,Math.min(3,patchZoom*Math.exp(-Math.max(-300,Math.min(300,event.deltaY))*.003)))/patchZoom;const left=(viewport.scrollLeft+x)*ratio-x,top=(viewport.scrollTop+y)*ratio-y;patchZoom*=ratio;stage.style.zoom=patchZoom;viewport.scrollLeft=left;viewport.scrollTop=top;$('patchZoomLabel').textContent=Math.round(patchZoom*100)+'%';}
+ if(event.ctrlKey){patchCameraX-=event.deltaY*2;}
+ else{
+  const rect=viewport.getBoundingClientRect(),x=event.clientX-rect.left-(viewport.clientLeft||0),y=event.clientY-rect.top-(viewport.clientTop||0);
+  const next=Math.max(.03,Math.min(3,patchZoom*Math.exp(-Math.max(-300,Math.min(300,event.deltaY))*.003)));
+  const ratio=next/patchZoom;
+  patchCameraX=x-(x-patchCameraX)*ratio;patchCameraY=y-(y-patchCameraY)*ratio;patchZoom=next;
+ }
+ applyPatchCamera();
  if(patchPending){const rect=stage.getBoundingClientRect();patchPointer={x:(event.clientX-rect.left)/patchZoom,y:(event.clientY-rect.top)/patchZoom};drawPatchCables();}
 }
 $('patchViewport').addEventListener?.('wheel',patchWheel,{passive:false});
@@ -212,7 +232,7 @@ $('patchViewport').addEventListener?.('pointerdown',e=>{
  e.preventDefault();e.stopPropagation();patchSpaceUsed=true;
  if(patchPending)cancelPatchInteraction();
  const viewport=e.currentTarget;
- patchPan={viewport,pointerID:e.pointerId,x:e.clientX,y:e.clientY,left:viewport.scrollLeft,top:viewport.scrollTop};
+ patchPan={viewport,pointerID:e.pointerId,x:e.clientX,y:e.clientY,left:patchCameraX,top:patchCameraY};
  viewport.classList.add('panning');viewport.setPointerCapture(e.pointerId);
 },true);
 $('patchViewport').addEventListener?.('lostpointercapture',e=>{if(patchPan&&patchPan.pointerID===e.pointerId)endPatchPan();});
@@ -220,28 +240,27 @@ $('patchViewport').addEventListener?.('lostpointercapture',e=>{if(patchPan&&patc
 function patchViewBounds(){
  const cards=[...$('patchNodes').children];
  return {
-  left:Math.max(0,Math.min(...patchGraph.Nodes.map(n=>n.X))-28),
-  top:Math.max(0,Math.min(...patchGraph.Nodes.map(n=>n.Y))-28),
-  right:Math.max(500,...cards.map(card=>card.offsetLeft+card.offsetWidth+28)),
-  bottom:Math.max(350,...cards.map(card=>card.offsetTop+card.offsetHeight+28)),
+  left:Math.min(...patchGraph.Nodes.map(n=>n.X))-28,
+  top:Math.min(...patchGraph.Nodes.map(n=>n.Y))-28,
+  right:Math.max(...cards.map(card=>card.offsetLeft+card.offsetWidth+28)),
+  bottom:Math.max(...cards.map(card=>card.offsetTop+card.offsetHeight+28)),
  };
 }
 function fitPatchView(){
  if(!patchGraph?.Nodes.length)return;
  const viewport=$('patchViewport'),bounds=patchViewBounds();
  if(!viewport.clientWidth||!viewport.clientHeight)return;
- patchZoom=Math.max(.15,Math.min(1.2,(viewport.clientWidth-24)/(bounds.right-bounds.left),(viewport.clientHeight-24)/(bounds.bottom-bounds.top)));
- $('patchStage').style.zoom=patchZoom;
- viewport.scrollLeft=Math.max(0,bounds.left*patchZoom-12);
- viewport.scrollTop=Math.max(0,bounds.top*patchZoom-12);
- $('patchZoomLabel').textContent=Math.round(patchZoom*100)+'%';
+ patchZoom=Math.max(.03,Math.min(1.2,(viewport.clientWidth-24)/(bounds.right-bounds.left),(viewport.clientHeight-24)/(bounds.bottom-bounds.top)));
+ patchCameraX=viewport.clientWidth/2-(bounds.left+bounds.right)/2*patchZoom;
+ patchCameraY=viewport.clientHeight/2-(bounds.top+bounds.bottom)/2*patchZoom;
+ applyPatchCamera();
 }
 function togglePatchFocus(enabled=!patchFocusView){
  if(enabled===!!patchFocusView)return;
  const viewport=$('patchViewport'),workspace=$('patchWorkspace'),button=$('patchFocus');
  cancelPatchInteraction();endPatchPan();setPatchSpace(false);
  if(enabled){
-  patchFocusView={zoom:patchZoom,left:viewport.scrollLeft,top:viewport.scrollTop};
+  patchFocusView={zoom:patchZoom,left:patchCameraX,top:patchCameraY};
   patchFocusPrior=document.activeElement;
   // Move the workspace out of any parent stacking contexts.
   const marker=document.createComment('patch workspace');
@@ -265,9 +284,7 @@ function togglePatchFocus(enabled=!patchFocusView){
   if(previous.signals)previous.signalMarker.replaceWith(previous.signals);
   previous.marker.replaceWith(workspace);
   for(const item of previous.background)item.el.inert=item.inert;
-  patchZoom=previous.zoom;$('patchStage').style.zoom=patchZoom;
-  viewport.scrollLeft=previous.left;viewport.scrollTop=previous.top;
-  $('patchZoomLabel').textContent=Math.round(patchZoom*100)+'%';
+  patchZoom=previous.zoom;patchCameraX=previous.left;patchCameraY=previous.top;applyPatchCamera();
   button.textContent='Full screen';button.setAttribute('aria-pressed','false');
   if(patchFocusPrior?.isConnected)patchFocusPrior.focus();
  }
@@ -280,3 +297,5 @@ for(const [id,deltaY] of [['patchZoomIn',-70],['patchZoomOut',70]]){
   patchWheel({deltaY,clientX:rect.left+viewport.clientWidth/2,clientY:rect.top+viewport.clientHeight/2,preventDefault(){}});
  };
 }
+
+$('patchOpenWorkspace').onclick=()=>togglePatchFocus(true);

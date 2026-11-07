@@ -10,7 +10,7 @@ function openTab(name){
  if(name!=='patch'&&typeof patchFocusView!=='undefined'&&patchFocusView)togglePatchFocus(false);
  if(currentTab!==name&&typeof stopTrimLoop==='function')stopTrimLoop();currentTab=name;
  for(const tab of document.querySelectorAll('[data-tab]')){const on=tab.dataset.tab===name;tab.setAttribute('aria-selected',String(on));tab.tabIndex=on?0:-1;$(tab.getAttribute('aria-controls')).hidden=!on;}
- if(active)poll();else idle();if(name==='patch')renderPatch();if(name==='sampler')refreshSamplerRecordOutputs();
+ if(active)poll();else idle();if(name==='patch'){renderPatch();togglePatchFocus(true);}if(name==='sampler')refreshSamplerRecordOutputs();
 }
 document.querySelectorAll('[data-tab]').forEach(tab=>{
  tab.onclick=()=>openTab(tab.dataset.tab);

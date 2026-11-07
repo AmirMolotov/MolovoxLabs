@@ -32,11 +32,8 @@ type patchProgram struct {
 }
 
 // Compile the cable graph once when settings change. Audio evaluation uses only
-// fixed scratch buffers and the existing per-filter DSP state.
+// prepared scratch buffers and the existing per-filter DSP state.
 func compilePatch(p PatchBay, filters []MicFilter) (*patchProgram, error) {
-	if len(p.Nodes) > 32 || len(p.Cables) > 96 {
-		return nil, errors.New("Patch bay supports up to 32 nodes and 96 cables")
-	}
 	if !p.Enabled {
 		return nil, nil
 	}
@@ -47,7 +44,7 @@ func compilePatch(p PatchBay, filters []MicFilter) (*patchProgram, error) {
 		effectIDs[f.ID] = i
 	}
 	for i, node := range p.Nodes {
-		if node.ID == "" || len(node.ID) > 128 || math.IsNaN(node.X) || math.IsNaN(node.Y) || math.IsInf(node.X, 0) || math.IsInf(node.Y, 0) || node.X < 0 || node.X > 5000 || node.Y < 0 || node.Y > 5000 {
+		if node.ID == "" || len(node.ID) > 128 || math.IsNaN(node.X) || math.IsNaN(node.Y) || math.IsInf(node.X, 0) || math.IsInf(node.Y, 0) {
 			return nil, errors.New("Invalid patch node")
 		}
 		if _, ok := index[node.ID]; ok {
@@ -137,7 +134,14 @@ func compilePatch(p PatchBay, filters []MicFilter) (*patchProgram, error) {
 	return program, nil
 }
 func (p *patchProgram) sample(r *renderEndpoint, mic float32, sounds *boardVoices, clips *[8]float32, o *AudioOptions) float32 {
-	var values [32]float32
+	// Configure prepares this per-output workspace before audio rendering.
+	if len(r.filters.slots) != len(o.Filters) {
+		r.filters = *prepareFilterChain(o.Filters, &r.filters, len(p.steps))
+	}
+	if len(r.filters.values) != len(p.steps) {
+		r.filters.values = make([]float32, len(p.steps)) // Zero-value test/standalone callers.
+	}
+	values := r.filters.values
 	var output float32
 	for i, step := range p.steps {
 		var x float32
@@ -183,7 +187,7 @@ func (p *patchProgram) sample(r *renderEndpoint, mic float32, sounds *boardVoice
 				if active {
 					x = r.filters.sampleAt(x, o.Filters, step.filter)
 				} else {
-					r.filters.states[step.filter].noiseGain = 0
+					r.filters.slots[step.filter].state.noiseGain = 0
 				}
 			}
 		case "output":

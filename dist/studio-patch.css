@@ -69,3 +69,16 @@ body.patch-focused .patch-status{margin:0;min-height:18px}
 body.patch-focused .signal-dock{position:static;z-index:auto;padding:8px 12px;border:1px solid #ffffff15;border-radius:10px;background:#142019;backdrop-filter:none}
 body.patch-focused .signal-dock canvas{height:24px}
 body.patch-focused .signal-dock .dock-controls{margin-top:5px;padding-top:5px}
+
+aside .brand{width:100%;gap:9px;letter-spacing:0;overflow:visible}
+aside .brand>img{width:34px;height:34px;flex:0 0 34px}
+aside .brand>span{font-size:23px;line-height:1.15;min-width:0;white-space:nowrap}
+aside .brand>span>small{font-size:10px;line-height:1.6;letter-spacing:3px}
+.patch-viewport{overflow:hidden;touch-action:none}
+.patch-stage{transform-origin:0 0}
+.patch-entry{display:flex;align-items:center;justify-content:space-between;gap:20px;margin:20px 0;padding:20px 24px;border:1px solid #638749;border-radius:14px;background:linear-gradient(120deg,#b9e78d16,#8ddcf308)}
+.patch-entry p{margin:6px 0 0;font-size:12px;color:#a6bba6}
+.patch-entry .primary{white-space:nowrap;padding:13px 18px}
+body.patch-focused .patch-viewport{cursor:grab}
+
+.patch-viewport,body.patch-focused .patch-viewport{overflow:clip}

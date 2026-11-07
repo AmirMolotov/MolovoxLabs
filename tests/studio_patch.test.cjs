@@ -5,7 +5,7 @@ function harness(){
  const controls=new Map();let id=0;
  const h={micFilters:[{ID:'reverb',Kind:'reverb'},{ID:'echo',Kind:'echo'}],library:{Boards:[]},devices:{Outputs:[]},configured:0,rendered:0,
   crypto:{randomUUID:()=>String(++id)},structuredClone,
-  $:key=>{if(!controls.has(key))controls.set(key,{textContent:'',value:'',checked:true,listeners:{},addEventListener(name,handler){this.listeners[name]=handler;}});return controls.get(key);},
+  $:key=>{if(!controls.has(key))controls.set(key,{textContent:'',value:'',checked:true,style:{},listeners:{},addEventListener(name,handler){this.listeners[name]=handler;}});return controls.get(key);},
   configure:async()=>{h.configured++;},window:{listeners:{},addEventListener(name,handler){this.listeners[name]=handler;}},document:{listeners:{},querySelector:()=>null,addEventListener(name,handler){(this.listeners[name]??=[]).push(handler);}},filterTitle:f=>f.Kind,
  };
  vm.createContext(h);vm.runInContext(fs.readFileSync(path.join(__dirname,'../dist/studio-patch.js'),'utf8'),h);
@@ -18,9 +18,9 @@ test('soundboard preset connects effects to sounds and keeps microphone on a dry
  assert.equal(graph.Enabled,true);assert.ok(graph.Cables.some(c=>c.From===board.ID&&c.To===fx[0].ID));assert.ok(graph.Cables.some(c=>c.From===fx[1].ID&&c.To===out.ID));assert.ok(graph.Cables.some(c=>c.From===mic.ID&&c.To===out.ID));assert.equal(h.configured,1);
 });
 test('wheel zoom preserves the point under the pointer and Ctrl-wheel only pans',()=>{
- const h=harness(),viewport=h.$('patchViewport'),stage=h.$('patchStage');Object.assign(viewport,{scrollLeft:200,scrollTop:100,getBoundingClientRect:()=>({left:10,top:20})});stage.style={};let prevented=0;
- h.patchWheel({clientX:110,clientY:120,deltaY:-100,preventDefault(){prevented++;}});const zoom=vm.runInContext('patchZoom',h);assert.ok(zoom>1);assert.ok(Math.abs((viewport.scrollLeft+100)/zoom-300)<1e-6);assert.ok(Math.abs((viewport.scrollTop+100)/zoom-200)<1e-6);
- const oldLeft=viewport.scrollLeft,oldTop=viewport.scrollTop;h.patchWheel({ctrlKey:true,deltaY:80,preventDefault(){prevented++;}});assert.equal(viewport.scrollLeft,oldLeft+160);assert.equal(viewport.scrollTop,oldTop);assert.equal(vm.runInContext('patchZoom',h),zoom);assert.equal(prevented,2);
+ const h=harness(),viewport=h.$('patchViewport'),stage=h.$('patchStage');Object.assign(viewport,{getBoundingClientRect:()=>({left:10,top:20})});vm.runInContext('patchCameraX=-200;patchCameraY=-100',h);stage.style={};let prevented=0;
+ h.patchWheel({clientX:110,clientY:120,deltaY:-100,preventDefault(){prevented++;}});const zoom=vm.runInContext('patchZoom',h);assert.ok(zoom>1);assert.ok(Math.abs((100-vm.runInContext("patchCameraX",h))/zoom-300)<1e-6);assert.ok(Math.abs((100-vm.runInContext("patchCameraY",h))/zoom-200)<1e-6);
+ const oldLeft=vm.runInContext("patchCameraX",h),oldTop=vm.runInContext("patchCameraY",h);h.patchWheel({ctrlKey:true,deltaY:80,preventDefault(){prevented++;}});assert.equal(vm.runInContext("patchCameraX",h),oldLeft-160);assert.equal(vm.runInContext("patchCameraY",h),oldTop);assert.equal(vm.runInContext('patchZoom',h),zoom);assert.equal(prevented,2);
 });
 test('a pad can create its own effect chain without changing microphone effects',()=>{
  const h=harness();h.library.Boards=[{ID:'board',Sounds:[{ID:'clip-one',Name:'Clip one'}]}];h.filterDefaults={gain:{GainDB:6}};h.filterNames={gain:'Gain'};h.renderFilters=()=>{};h.renderGroups=()=>{};
@@ -95,7 +95,7 @@ test('Space and primary drag pan the viewport without moving nodes or applying r
  viewport.listeners.pointerdown({button:0,pointerId:5,clientX:80,clientY:50,currentTarget:viewport,preventDefault(){},stopPropagation(){}});
  assert.equal(captured,true);
  h.window.listeners.pointermove({pointerId:5,clientX:50,clientY:10});
- assert.equal(viewport.scrollLeft,230);assert.equal(viewport.scrollTop,190);
+ assert.equal(vm.runInContext("patchCameraX",h),-30);assert.equal(vm.runInContext("patchCameraY",h),-40);
  h.window.listeners.pointerup({button:0,pointerId:5});assert.equal(captured,false);
  h.document.listeners.keyup[0](key);assert.equal(prevented,true);
  assert.deepEqual(h.patchOptions(),before);assert.equal(h.configured,0);
@@ -134,6 +134,7 @@ test('full-screen patch view fits nodes and restores view, focus and background 
  h.$('patchNodes').children=cards;
  Object.assign(viewport,{scrollLeft:120,scrollTop:80,clientWidth:1000,clientHeight:600});
  stage.style={};
+ vm.runInContext('patchCameraX=-120;patchCameraY=80',h);
  h.requestAnimationFrame=callback=>callback();
  h.togglePatchFocus(true);
  assert.equal(background.inert,true);
@@ -142,8 +143,8 @@ test('full-screen patch view fits nodes and restores view, focus and background 
  assert.equal(h.configured,0);
  h.togglePatchFocus(false);
  assert.equal(background.inert,false);
- assert.equal(viewport.scrollLeft,120);
- assert.equal(viewport.scrollTop,80);
+ assert.equal(vm.runInContext("patchCameraX",h),-120);
+ assert.equal(vm.runInContext("patchCameraY",h),80);
  assert.equal(vm.runInContext('patchZoom',h),1);
  assert.ok(restored&&focused&&signalsRestored);
  assert.equal(h.$('patchFocus').textContent,'Full screen');
@@ -155,9 +156,29 @@ test('dragging the patch background pans without needing Space',()=>{
   setPointerCapture(){captured=true;},hasPointerCapture(){return captured;},releasePointerCapture(){captured=false;}});
  viewport.listeners.pointerdown({button:0,pointerId:8,target:h.$('patchStage'),currentTarget:viewport,clientX:100,clientY:100,preventDefault(){},stopPropagation(){}});
  h.window.listeners.pointermove({pointerId:8,clientX:60,clientY:90});
- assert.equal(viewport.scrollLeft,190);
- assert.equal(viewport.scrollTop,70);
+ assert.equal(vm.runInContext("patchCameraX",h),-40);
+ assert.equal(vm.runInContext("patchCameraY",h),-10);
  assert.equal(h.configured,0);
  h.window.listeners.pointerup({button:0,pointerId:8});
  assert.equal(captured,false);
+});
+
+test('camera can pan through zero and far beyond either edge without moving graph nodes',()=>{
+ const h=harness(),viewport=h.$('patchViewport'),before=h.patchOptions();
+ Object.assign(viewport,{classList:{add(){},remove(){}},setPointerCapture(){},hasPointerCapture(){return false;}});
+ viewport.listeners.pointerdown({button:0,pointerId:9,target:h.$('patchStage'),currentTarget:viewport,clientX:0,clientY:0,preventDefault(){},stopPropagation(){}});
+ for(const position of [-100000,100000,-250000]){
+  h.window.listeners.pointermove({pointerId:9,clientX:position,clientY:-position});
+  assert.equal(vm.runInContext('patchCameraX',h),position);
+  assert.equal(vm.runInContext('patchCameraY',h),-position);
+ }
+ h.window.listeners.pointerup({button:0,pointerId:9});
+ assert.deepEqual(h.patchOptions(),before);
+});
+test('effect instances and nodes can be added beyond the old eight-effect and 32-node limits',()=>{
+ const h=harness();
+ h.renderFilters=()=>{};h.renderGroups=()=>{};
+ for(let i=0;i<40;i++)h.addPatchEffectInstance({Kind:'gain',GainDB:0,Enabled:true},100+i*40,-12000);
+ assert.equal(h.micFilters.length,42);
+ assert.ok(h.patchOptions().Nodes.length>32);
 });
