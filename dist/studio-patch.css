@@ -12,3 +12,24 @@
 .patch-effect-settings .vst-buttons button{font-size:10px;padding:6px}
 .patch-vst-params{max-height:200px;overflow:auto;overscroll-behavior:contain}
 .patch-vst-params .vst-param{font-size:10px;padding:6px 2px}
+.eq-editor{grid-column:1/-1;min-width:0}
+.eq-plot{display:block;width:100%;max-height:290px;background:#101a14;border:1px solid #3f5845;border-radius:8px;touch-action:none}
+.eq-grid line{stroke:#ffffff22}
+.eq-grid .eq-zero{stroke:#ffffff65}
+.eq-grid text{fill:#bfd0c0;font:10px "Segoe UI",sans-serif}
+.eq-response,.eq-selected-curve{fill:none;stroke-width:2;pointer-events:none}
+.eq-response{stroke:#e0f6cc}
+.eq-selected-curve{stroke-dasharray:3 3;opacity:.65}
+.eq-points g{cursor:grab}
+.eq-points g:active{cursor:grabbing}
+.eq-points text{fill:#112017;font:700 10px "Segoe UI",sans-serif;pointer-events:none}
+.eq-points circle{stroke:#101a14;stroke-width:1.5}
+.eq-points .eq-active{stroke:#fff;stroke-width:2}
+.eq-actions{display:flex;align-items:center;gap:5px;margin-top:8px;flex-wrap:wrap}
+.eq-actions select,.eq-actions button{width:auto;min-width:0;margin:0;padding:6px 8px;font-size:11px}
+.eq-actions select{flex:1;padding-right:26px}
+.eq-values{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-top:8px}
+.eq-values label{display:grid;gap:4px;font-size:10px;color:#bfd0c0}
+.eq-values input{width:100%;min-width:0;padding:5px 4px;border:1px solid #3f5845;border-radius:5px;background:#101a14;color:inherit;font-size:11px}
+
+.eq-help{font-size:10px;line-height:1.5;color:#9fb59e;margin:7px 0}

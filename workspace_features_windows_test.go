@@ -85,6 +85,38 @@ func TestEqualizerBandGains(t *testing.T) {
 		t.Fatal("Accepted equalizer gain above 12 dB")
 	}
 }
+func TestParametricEqualizer(t *testing.T) {
+	for _, tc := range []struct{ frequency, gain, q float64 }{
+		{350, 9, .4}, {3400, -18, 7}, {17000, 12, 2},
+	} {
+		filters := []MicFilter{{Kind: "eq", Enabled: true, EQBands: []EQBand{{tc.frequency, tc.gain, tc.q}}}}
+		if err := validateFilters(filters); err != nil {
+			t.Fatal(err)
+		}
+		var chain micFilterChain
+		var inputEnergy, outputEnergy float64
+		for i := 0; i < sampleRate; i++ {
+			x := .05 * math.Sin(2*math.Pi*tc.frequency*float64(i)/sampleRate)
+			y := float64(chain.sampleAt(float32(x), filters, 0))
+			if i >= sampleRate/2 {
+				inputEnergy += x * x
+				outputEnergy += y * y
+			}
+		}
+		if got := 10 * math.Log10(outputEnergy/inputEnergy); math.Abs(got-tc.gain) > .01 {
+			t.Errorf("%g Hz Q %g: got %g dB, want %g", tc.frequency, tc.q, got, tc.gain)
+		}
+		filters[0].EQBands = []EQBand{}
+		if got := chain.sample(.123, filters); got != .123 {
+			t.Errorf("Empty equalizer changed signal: %g", got)
+		}
+	}
+	for _, band := range []EQBand{{19, 0, 1}, {20001, 0, 1}, {1000, 25, 1}, {1000, 0, 0}, {1000, 0, 13}, {math.NaN(), 0, 1}, {1000, math.Inf(1), 1}} {
+		if validateFilters([]MicFilter{{Kind: "eq", EQBands: []EQBand{band}}}) == nil {
+			t.Errorf("Accepted invalid EQ band: %+v", band)
+		}
+	}
+}
 func TestDownwardExpander(t *testing.T) {
 	filters := []MicFilter{{Kind: "expander", Enabled: true, Threshold: -40, Ratio: 2}}
 	if err := validateFilters(filters); err != nil {

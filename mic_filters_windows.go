@@ -25,6 +25,7 @@ type MicFilter struct {
 	BassDB       float64
 	MidDB        float64
 	TrebleDB     float64
+	EQBands      []EQBand
 	Semitones    float64
 	Strength     float64
 	NoiseDB      float64
@@ -39,12 +40,22 @@ type MicFilter struct {
 	DriveDB      float64
 	OutputDB     float64
 }
+
+const maxEQBands = 8
+
+type EQBand struct {
+	Frequency float64
+	GainDB    float64
+	Q         float64
+}
+
 type micFilterState struct {
 	kind                           string
 	previous, high, low, env, gain float64
 	random                         uint32
 	noiseGain                      float64
-	eq                             [3]eqBand
+	eq                             [maxEQBands]eqBand
+	eqCount                        int
 }
 type micFilterChain struct {
 	vstSlots  [8]*vstUnit
@@ -121,6 +132,15 @@ func validateFilters(filters []MicFilter) error {
 				return errors.New("Gate threshold must be −90 to −5 dB")
 			}
 		case "eq":
+			if len(f.EQBands) > maxEQBands {
+				return errors.New("Equalizer supports up to eight bands")
+			}
+			for _, band := range f.EQBands {
+				if !(band.Frequency >= 20 && band.Frequency <= 20000 &&
+					band.GainDB >= -24 && band.GainDB <= 24 && band.Q >= .2 && band.Q <= 12) {
+					return errors.New("Invalid equalizer band frequency, gain or width")
+				}
+			}
 			if math.Abs(f.BassDB) > 12 || math.Abs(f.MidDB) > 12 || math.Abs(f.TrebleDB) > 12 {
 				return errors.New("Equalizer band gains must be −12 to +12 dB")
 			}
@@ -167,7 +187,8 @@ func (c *micFilterChain) process(input float32, filters []MicFilter, start, end 
 		if !f.Enabled {
 			c.effects[i].active = false
 			if f.Kind == "eq" {
-				s.eq = [3]eqBand{}
+				s.eq = [maxEQBands]eqBand{}
+				s.eqCount = 0
 			}
 			if f.Kind == "expander" {
 				s.env, s.gain = 0, 1
@@ -267,9 +288,18 @@ func (c *micFilterChain) process(input float32, filters []MicFilter, start, end 
 			}
 			x *= math.Pow(10, reduction/20)
 		case "eq":
-			x = s.eq[0].sample(x, 120, f.BassDB)
-			x = s.eq[1].sample(x, 1000, f.MidDB)
-			x = s.eq[2].sample(x, 8000, f.TrebleDB)
+			bands := f.EQBands
+			if bands == nil {
+				// Older settings stored three fixed-frequency bands.
+				bands = []EQBand{{120, f.BassDB, 1}, {1000, f.MidDB, 1}, {8000, f.TrebleDB, 1}}
+			}
+			for i, band := range bands {
+				x = s.eq[i].sample(x, band)
+			}
+			if len(bands) < s.eqCount {
+				clear(s.eq[len(bands):s.eqCount])
+			}
+			s.eqCount = len(bands)
 		case "gain":
 			x *= math.Pow(10, f.GainDB/20)
 		}
@@ -281,23 +311,24 @@ func (c *micFilterChain) process(input float32, filters []MicFilter, start, end 
 }
 
 type eqBand struct {
-	gainDB     float64
+	params     EQBand
 	b0, b1, b2 float64
 	a1, a2     float64
 	z1, z2     float64
 }
 
-func (b *eqBand) sample(x, frequency, gainDB float64) float64 {
-	if gainDB != b.gainDB {
+func (b *eqBand) sample(x float64, band EQBand) float64 {
+	gainDB := band.GainDB
+	if band != b.params {
 		if gainDB == 0 {
-			*b = eqBand{}
+			*b = eqBand{params: band}
 		} else {
-			// Peaking biquad with Q = 1. Cache coefficients until the gain changes.
-			omega := 2 * math.Pi * frequency / sampleRate
-			alpha := math.Sin(omega) / 2
+			// Cache the peaking biquad coefficients until the band changes.
+			omega := 2 * math.Pi * band.Frequency / sampleRate
+			alpha := math.Sin(omega) / (2 * band.Q)
 			a := math.Pow(10, gainDB/40)
 			a0 := 1 + alpha/a
-			b.gainDB = gainDB
+			b.params = band
 			b.b0 = (1 + alpha*a) / a0
 			b.b1 = -2 * math.Cos(omega) / a0
 			b.b2 = (1 - alpha*a) / a0
