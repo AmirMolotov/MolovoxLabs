@@ -21,7 +21,7 @@ type boardPackage struct {
 }
 
 func chooseBoardFile(owner uintptr, save bool) (string, error) {
-	description, _ := windows.UTF16FromString("Quiet Lab soundboard (*.qlboard)")
+	description, _ := windows.UTF16FromString("Molovox Labs soundboard (*.qlboard)")
 	pattern, _ := windows.UTF16FromString("*.qlboard")
 	filter := append(description, pattern...)
 	filter = append(filter, 0)
@@ -148,7 +148,7 @@ func (s *appStore) ImportBoard(path string) (libraryState, error) {
 	}
 	manifest := entries["manifest.json"]
 	if manifest == nil {
-		return libraryState{}, errors.New("Not a Quiet Lab soundboard package")
+		return libraryState{}, errors.New("Not a Molovox Labs soundboard package")
 	}
 	data, err := readZipFile(manifest, 1024*1024)
 	if err != nil {

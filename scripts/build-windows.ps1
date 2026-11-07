@@ -1,8 +1,9 @@
 param([switch]$Run)
 $ErrorActionPreference = 'Stop'
 $taskRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$taskApp = Join-Path $taskRoot 'QuietLab.exe'
-$taskBuild = Join-Path $taskRoot '.quietlab-build.tmp'
+$taskApp = Join-Path $taskRoot 'MolovoxLabs.exe'
+$taskLegacyApp = Join-Path $taskRoot 'QuietLab.exe'
+$taskBuild = Join-Path $taskRoot '.molovox-build.tmp'
 Push-Location $taskRoot
 try {
     & cmd /c native\vst3\build.cmd
@@ -16,12 +17,13 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Interface validation failed.' }
     & go build -trimpath -ldflags '-H=windowsgui -s -w' -o $taskBuild .
     if ($LASTEXITCODE -ne 0) { throw 'Application build failed.' }
-    $taskRunning = @(Get-CimInstance Win32_Process -Filter "name = 'QuietLab.exe'" | Where-Object { $_.ExecutablePath -eq $taskApp })
+    $taskRunning = @(Get-CimInstance Win32_Process -Filter "name = 'MolovoxLabs.exe' OR name = 'QuietLab.exe'" | Where-Object { ($_.ExecutablePath -eq $taskApp -or $_.ExecutablePath -eq $taskLegacyApp) })
     foreach ($taskProcess in $taskRunning) {
         $taskInstance = Get-Process -Id $taskProcess.ProcessId -ErrorAction SilentlyContinue
         if ($taskInstance) { $taskInstance.Kill(); $taskInstance.WaitForExit() }
     }
     Move-Item -LiteralPath $taskBuild -Destination $taskApp -Force
+    if (Test-Path -LiteralPath $taskLegacyApp) { Remove-Item -LiteralPath $taskLegacyApp }
     if ($Run -or $taskRunning.Count -gt 0) { Start-Process -FilePath $taskApp }
     Write-Output "Updated $taskApp"
 } finally { Pop-Location }

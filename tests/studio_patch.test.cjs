@@ -113,3 +113,51 @@ test('duplicate effect nodes get independent settings and no inherited shortcuts
  assert.ok(after.Nodes.some(n=>n.FilterID===duplicate.ID));
  assert.deepEqual(after.Cables,before.Cables);
 });
+
+test('full-screen patch view fits nodes and restores view, focus and background on exit',()=>{
+ const h=harness(),viewport=h.$('patchViewport'),stage=h.$('patchStage'),workspace=h.$('patchWorkspace');
+ const background={tagName:'ASIDE',inert:false};
+ let restored=false,focused=false;
+ const signals={before(){},tagName:'DIV'};
+ let signalsRestored=false;
+ const marker={replaceWith(node){restored=node===workspace;}};
+ const signalMarker={replaceWith(node){signalsRestored=node===signals;}};
+ h.document.createComment=name=>name==='shared signals'?signalMarker:marker;
+ h.document.querySelector=selector=>selector==='.signal-dock'?signals:null;
+ h.document.activeElement={isConnected:true,focus(){focused=true;}};
+ h.document.body={children:[background],classList:{add(){},remove(){}},append(){}};
+ Object.assign(workspace,{before(node){assert.equal(node,marker);},querySelector(){return {after(node){assert.equal(node,signals);}};}});
+ for(const id of ['patchViewport','patchFocus']){
+  Object.assign(h.$(id),{classList:{toggle(){},remove(){}},focus(){},setAttribute(){}});
+ }
+ const cards=h.patchOptions().Nodes.map(node=>({offsetLeft:node.X,offsetTop:node.Y,offsetWidth:210,offsetHeight:150}));
+ h.$('patchNodes').children=cards;
+ Object.assign(viewport,{scrollLeft:120,scrollTop:80,clientWidth:1000,clientHeight:600});
+ stage.style={};
+ h.requestAnimationFrame=callback=>callback();
+ h.togglePatchFocus(true);
+ assert.equal(background.inert,true);
+ assert.ok(vm.runInContext('patchZoom',h)>0);
+ assert.equal(h.$('patchFocus').textContent,'Exit full screen');
+ assert.equal(h.configured,0);
+ h.togglePatchFocus(false);
+ assert.equal(background.inert,false);
+ assert.equal(viewport.scrollLeft,120);
+ assert.equal(viewport.scrollTop,80);
+ assert.equal(vm.runInContext('patchZoom',h),1);
+ assert.ok(restored&&focused&&signalsRestored);
+ assert.equal(h.$('patchFocus').textContent,'Full screen');
+});
+test('dragging the patch background pans without needing Space',()=>{
+ const h=harness(),viewport=h.$('patchViewport');
+ let captured=false;
+ Object.assign(viewport,{scrollLeft:150,scrollTop:60,classList:{add(){},remove(){}},
+  setPointerCapture(){captured=true;},hasPointerCapture(){return captured;},releasePointerCapture(){captured=false;}});
+ viewport.listeners.pointerdown({button:0,pointerId:8,target:h.$('patchStage'),currentTarget:viewport,clientX:100,clientY:100,preventDefault(){},stopPropagation(){}});
+ h.window.listeners.pointermove({pointerId:8,clientX:60,clientY:90});
+ assert.equal(viewport.scrollLeft,190);
+ assert.equal(viewport.scrollTop,70);
+ assert.equal(h.configured,0);
+ h.window.listeners.pointerup({button:0,pointerId:8});
+ assert.equal(captured,false);
+});

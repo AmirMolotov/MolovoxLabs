@@ -53,10 +53,10 @@ public:REFS
 class Factory:public IPluginFactory2 {
 public:REFS
  tresult PLUGIN_API queryInterface(const TUID id,void** p)override{*p=nullptr;if(is<FUnknown>(id)||is<IPluginFactory>(id)||is<IPluginFactory2>(id)){*p=(IPluginFactory2*)this;addRef();return kResultOk;}return kNoInterface;}
- tresult PLUGIN_API getFactoryInfo(PFactoryInfo* info)override{memset(info,0,sizeof(*info));strcpy_s(info->vendor,"Quiet Lab Tests");return kResultOk;}
+ tresult PLUGIN_API getFactoryInfo(PFactoryInfo* info)override{memset(info,0,sizeof(*info));strcpy_s(info->vendor,"Molovox Labs Tests");return kResultOk;}
  int32 PLUGIN_API countClasses()override{return 1;}
- tresult PLUGIN_API getClassInfo(int32 index,PClassInfo* info)override{if(index)return kResultFalse;memset(info,0,sizeof(*info));memcpy(info->cid,classID,16);info->cardinality=PClassInfo::kManyInstances;strcpy_s(info->category,kVstAudioEffectClass);strcpy_s(info->name,"Quiet Lab Test Gain");return kResultOk;}
- tresult PLUGIN_API getClassInfo2(int32 index,PClassInfo2* info)override{if(index)return kResultFalse;memset(info,0,sizeof(*info));memcpy(info->cid,classID,16);info->cardinality=PClassInfo::kManyInstances;strcpy_s(info->category,kVstAudioEffectClass);strcpy_s(info->name,"Quiet Lab Test Gain");strcpy_s(info->subCategories,"Fx");return kResultOk;}
+ tresult PLUGIN_API getClassInfo(int32 index,PClassInfo* info)override{if(index)return kResultFalse;memset(info,0,sizeof(*info));memcpy(info->cid,classID,16);info->cardinality=PClassInfo::kManyInstances;strcpy_s(info->category,kVstAudioEffectClass);strcpy_s(info->name,"Molovox Labs Test Gain");return kResultOk;}
+ tresult PLUGIN_API getClassInfo2(int32 index,PClassInfo2* info)override{if(index)return kResultFalse;memset(info,0,sizeof(*info));memcpy(info->cid,classID,16);info->cardinality=PClassInfo::kManyInstances;strcpy_s(info->category,kVstAudioEffectClass);strcpy_s(info->name,"Molovox Labs Test Gain");strcpy_s(info->subCategories,"Fx");return kResultOk;}
  tresult PLUGIN_API createInstance(FIDString cid,FIDString iid,void** p)override{*p=nullptr;if(memcmp(cid,classID,16))return kResultFalse;auto gain=new Gain;auto r=gain->queryInterface(iid,p);gain->release();return r;}
 };
 extern "C" __declspec(dllexport) IPluginFactory* GetPluginFactory(){return new Factory;}

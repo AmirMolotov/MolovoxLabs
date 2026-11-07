@@ -26,7 +26,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-//go:embed native/bin/QuietLabVST3.dll
+//go:embed native/bin/MolovoxVST3.dll
 var vstBridgeBinary []byte
 
 type vstBridge struct {
@@ -52,7 +52,7 @@ func loadVSTBridge() (*vstBridge, error) {
 			bridgeError = err
 			return
 		}
-		path := filepath.Join(root, fmt.Sprintf("QuietLabVST3-%x.dll", digest[:8]))
+		path := filepath.Join(root, fmt.Sprintf("MolovoxVST3-%x.dll", digest[:8]))
 		if existing, err := os.ReadFile(path); err != nil || sha256.Sum256(existing) != digest {
 			if err = os.WriteFile(path, vstBridgeBinary, 0600); err != nil {
 				bridgeError = err

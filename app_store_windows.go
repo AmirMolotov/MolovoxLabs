@@ -394,7 +394,7 @@ func chooseSoundFile(owner uintptr) (string, error) {
 	pattern, _ := windows.UTF16FromString("*.wav;*.mp3")
 	filter = append(filter, pattern...)
 	filter = append(filter, 0)
-	title, _ := windows.UTF16PtrFromString("Add a sound to Quiet Lab")
+	title, _ := windows.UTF16PtrFromString("Add a sound to Molovox Labs")
 	file := make([]uint16, 32768)
 	args := openFileName{Owner: owner, Filter: &filter[0], File: &file[0], MaxFile: uint32(len(file)), Title: title, Flags: 0x00001000 | 0x00000800 | 0x00080000 | 0x00000008}
 	args.Size = uint32(unsafe.Sizeof(args))

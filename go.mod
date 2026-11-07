@@ -1,4 +1,4 @@
-module quietlab
+module molovoxlabs
 
 go 1.27.0
 

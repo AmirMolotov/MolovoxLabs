@@ -49,7 +49,7 @@ type CreateVideoSample struct {
 }
 
 func chooseVideoFile(owner uintptr) (string, error) {
-	return chooseMediaFile(owner, "Import video into Quiet Lab", "*.mp4;*.webm;*.mov;*.m4v;*.mkv;*.avi;*.wmv;*.flv;*.mpeg;*.mpg;*.ts;*.mts;*.m2ts;*.mxf;*.ogv;*.3gp")
+	return chooseMediaFile(owner, "Import video into Molovox Labs", "*.mp4;*.webm;*.mov;*.m4v;*.mkv;*.avi;*.wmv;*.flv;*.mpeg;*.mpg;*.ts;*.mts;*.m2ts;*.mxf;*.ogv;*.3gp")
 }
 func chooseMediaFile(owner uintptr, titleText, extensions string) (string, error) {
 	description, _ := windows.UTF16FromString("Media files")

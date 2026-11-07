@@ -1,18 +1,20 @@
-# Quiet Lab
+# Molovox Labs
 
 Built by **Molotov**.
 
-Open **QuietLab.exe** in this folder. It is the only application executable. No login or Docker is required. Windows x64 and Microsoft Edge WebView2 Runtime are required. WASAPI capture, mixing, built-in effects, global shortcuts and MIDI run in Go. VST3 effects use the embedded native host; WebView2 displays the interface.
+Molovox Labs uses the existing %APPDATA%/QuietLab library directory for compatibility with earlier releases.
+
+Open **MolovoxLabs.exe** in this folder. It is the only application executable. No login or Docker is required. Windows x64 and Microsoft Edge WebView2 Runtime are required. WASAPI capture, mixing, built-in effects, global shortcuts and MIDI run in Go. VST3 effects use the embedded native host; WebView2 displays the interface.
 
 ## Installation
 
-1. Use Windows x64 and open **QuietLab.exe**. No GPT/OpenAI account, login, Docker, Go, Node or Python is needed to run the prebuilt app.
+1. Use Windows x64 and open **MolovoxLabs.exe**. No GPT/OpenAI account, login, Docker, Go, Node or Python is needed to run the prebuilt app.
 2. Install [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) if it is not already installed. This supplies the desktop interface.
-3. Install [FFmpeg](https://ffmpeg.org/download.html), including **ffmpeg.exe and ffprobe.exe**, for audio/video importing, conversion, thumbnails and waveform decoding. Both programs must be on PATH, or installed using the Windows WinGet `Gyan.FFmpeg` package, which Quiet Lab detects automatically. A Windows installation command is `winget install --id Gyan.FFmpeg --exact`. Restart Quiet Lab after installation. FFmpeg is a codec/processing tool; Quiet Lab does not bundle or install it.
-4. **Optional, for sending the mix to Discord or another app:** install [VB-AUDIO Virtual Cable (VB-CABLE)](https://vb-audio.com/Cable/) using its Windows installer and follow its administrator/restart instructions. Select **CABLE Input** as a Quiet Lab output and **CABLE Output** as the other app's microphone. Select headphones as another Quiet Lab output to monitor the mix. VB-CABLE is unnecessary for ordinary headphone/speaker playback. Each computer that needs a virtual microphone needs its own virtual audio driver; people listening in Discord do not need it.
+3. Install [FFmpeg](https://ffmpeg.org/download.html), including **ffmpeg.exe and ffprobe.exe**, for audio/video importing, conversion, thumbnails and waveform decoding. Both programs must be on PATH, or installed using the Windows WinGet `Gyan.FFmpeg` package, which Molovox Labs detects automatically. A Windows installation command is `winget install --id Gyan.FFmpeg --exact`. Restart Molovox Labs after installation. FFmpeg is a codec/processing tool; Molovox Labs does not bundle or install it.
+4. **Optional, for sending the mix to Discord or another app:** install [VB-AUDIO Virtual Cable (VB-CABLE)](https://vb-audio.com/Cable/) using its Windows installer and follow its administrator/restart instructions. Select **CABLE Input** as a Molovox Labs output and **CABLE Output** as the other app's microphone. Select headphones as another Molovox Labs output to monitor the mix. VB-CABLE is unnecessary for ordinary headphone/speaker playback. Each computer that needs a virtual microphone needs its own virtual audio driver; people listening in Discord do not need it.
 5. **Optional:** connect a MIDI controller for MIDI triggers, or install/licence Windows x64 VST3 effects for third-party effects. Keyboard shortcuts and built-in effects do not require MIDI hardware or VST plugins.
 
-The single QuietLab.exe uses these separately installed components; it does not create its own Windows virtual audio driver. User sounds and preferences stay under `%APPDATA%/QuietLab` when the executable is updated. Building from source has additional tools listed under Storage and development.
+The single MolovoxLabs.exe uses these separately installed components; it does not create its own Windows virtual audio driver. User sounds and preferences stay under `%APPDATA%/QuietLab` when the executable is updated. Building from source has additional tools listed under Storage and development.
 
 ## Soundboards
 
@@ -61,7 +63,7 @@ The top microphone switch still mutes the microphone source, and master output/c
 
 Changes apply immediately; no Apply button. Microphones, gains, outputs, startup listening, MIDI input and global shortcuts are remembered locally. Multiple microphones are averaged; up to eight outputs can be selected. Separate hardware devices may have different playback timing. Input/output waveforms and levels remain visible across tabs.
 
-For Discord with VB-Cable: select CABLE Input as a Quiet Lab output and CABLE Output as Discord's microphone. Add headphones as another output for monitoring. The app does not install a virtual audio driver.
+For Discord with VB-Cable: select CABLE Input as a Molovox Labs output and CABLE Output as Discord's microphone. Add headphones as another output for monitoring. The app does not install a virtual audio driver.
 
 ## VST3
 
@@ -75,10 +77,15 @@ Scanning runs one module per child process with a 20-second timeout and reports 
 
 This folder is the canonical source repository. User preferences, soundboards, copied audio and the WebView2 profile are stored separately under `%APPDATA%/QuietLab`. The embedded VST3 bridge is extracted to the local user cache. Updating the executable preserves the library.
 
-Build with **scripts/build-windows.ps1**. It builds native dependencies and the icon resource, runs Go and JavaScript behavior tests, checks the UI, and replaces only `QuietLab.exe`. If that app was running, it is reopened. Pass `-Run` to open it after a first build. Go, Node, Python and Visual Studio C++ build tools with a Windows SDK are required. Set `VCVARS64` if your Visual Studio installation differs from the included default. Icon assets are committed; regenerating them with scripts/make-icon.py requires Pillow.
+Build with **scripts/build-windows.ps1**. It builds native dependencies and the icon resource, runs Go and JavaScript behavior tests, checks the UI, and replaces only `MolovoxLabs.exe`. If that app was running, it is reopened. Pass `-Run` to open it after a first build. Go, Node, Python and Visual Studio C++ build tools with a Windows SDK are required. Set `VCVARS64` if your Visual Studio installation differs from the included default. Icon assets are committed; regenerating them with scripts/make-icon.py requires Pillow.
 
 Source, icon assets, the icon resource and the embedded bridge DLL are tracked in Git; application executables, test output, user data, generated compiler intermediates and old packages are ignored. The Steinberg VST3 interface sources and MIT license are vendored in third_party/vst3/pluginterfaces. Dependency notices are in THIRD-PARTY-NOTICES.txt.
 
 Checks cover native filters, graph routing/fan-in/fan-out, soundboard effects, feedback rejection, saved layouts, waveform progress, board archive audio, deletion boundaries, trigger scope, UI selection/routing behavior and native VST3 processing/state restoration. The installed SerumFX plugin was also checked for audio processing, parameter discovery, state saving and opening its native editor. Physical MIDI-controller operation still needs hardware verification.
 
 Loading feedback: startup and blocking audio/file/plugin operations show a branded loading screen before work begins. Background scanning, saving and audio updates show a persistent activity indicator outside recording. During active performance recording, loading overlays and activity spinners are suppressed and tasks skip the loader-paint delay. Video tiles use their thumbnails while a decoder is being prepared, rather than a loading message. Settings requests are serialized and rapid effect/routing edits are coalesced so older updates cannot replace newer choices.
+
+
+The Patch bay **Full screen** button opens a dedicated graph workspace. Drag the background or hold Space and drag to pan, use the wheel to zoom, and choose **Fit graph** to see the whole rack. Escape exits this view after cancelling any active cable or node gesture. Effect parameters remain editable on each node.
+
+The Molovox Labs icon was generated with the built-in imagegen tool. Its source is `assets/molovox-labs-source.png`. The prompt requested a bold abstract M merging an audio waveform and a subtle flame, lime and cyan highlights on a dark green rounded-square tile, readable at small sizes. Run `scripts/make-icon.py` to regenerate the PNG and multi-size Windows icon from that source.

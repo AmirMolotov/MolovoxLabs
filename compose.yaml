@@ -1,4 +1,4 @@
-name: quiet-lab
+name: molovox-labs
 services:
   web:
     build: .

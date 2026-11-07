@@ -7,8 +7,8 @@ import (
 	"unsafe"
 )
 
-func setQuietLabIcon(hwnd uintptr) {
-	appID, _ := windows.UTF16PtrFromString("QuietLab.AudioWorkspace")
+func setMolovoxIcon(hwnd uintptr) {
+	appID, _ := windows.UTF16PtrFromString("MolovoxLabs.AudioWorkspace")
 	windows.NewLazySystemDLL("shell32.dll").NewProc("SetCurrentProcessExplicitAppUserModelID").Call(uintptr(unsafe.Pointer(appID)))
 	module, _, _ := windows.NewLazySystemDLL("kernel32.dll").NewProc("GetModuleHandleW").Call(0)
 	load := user32.NewProc("LoadImageW")

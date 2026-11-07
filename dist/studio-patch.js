@@ -1,5 +1,6 @@
 'use strict';
 let patchGraph=null,patchPending=null,patchPointer=null,patchDragging=null;
+let patchFocusView=null,patchFocusPrior=null;
 let patchZoom=1,patchSpace=false,patchPan=null,patchSpaceUsed=false;
 const patchExpanded=new Set();
 const patchResize=typeof ResizeObserver==='function'?new ResizeObserver(sizePatchStage):null;
@@ -183,7 +184,11 @@ function patchWheel(event){
 }
 $('patchViewport').addEventListener?.('wheel',patchWheel,{passive:false});
 $('patchStage').oncontextmenu=e=>{e.preventDefault();e.stopPropagation();cancelPatchInteraction();};
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&(patchPending||patchDragging)){e.preventDefault();e.stopImmediatePropagation();cancelPatchInteraction();}},true);
+document.addEventListener('keydown',e=>{
+ if(e.key!=='Escape'||document.querySelector('dialog[open]'))return;
+ if(patchPending||patchDragging||patchPan){e.preventDefault();e.stopImmediatePropagation();cancelPatchInteraction();endPatchPan();}
+ else if(patchFocusView){e.preventDefault();e.stopImmediatePropagation();togglePatchFocus(false);}
+},true);
 
 function setPatchSpace(held){
  patchSpace=held;$('patchViewport').classList.toggle('pan-ready',held);
@@ -202,7 +207,8 @@ document.addEventListener('keydown',e=>{
 document.addEventListener('keyup',e=>{if(e.code==='Space'&&patchSpace){if(patchSpaceUsed)e.preventDefault();setPatchSpace(false);}},true);
 window.addEventListener('blur',()=>{if(patchSpace)setPatchSpace(false);endPatchPan();});
 $('patchViewport').addEventListener?.('pointerdown',e=>{
- if(!patchSpace||e.button!==0||patchDragging||patchPan)return;
+ const background=e.target===$('patchViewport')||e.target===$('patchStage')||e.target===$('patchWires');
+ if((!patchSpace&&!background)||e.button!==0||patchDragging||patchPan)return;
  e.preventDefault();e.stopPropagation();patchSpaceUsed=true;
  if(patchPending)cancelPatchInteraction();
  const viewport=e.currentTarget;
@@ -210,3 +216,67 @@ $('patchViewport').addEventListener?.('pointerdown',e=>{
  viewport.classList.add('panning');viewport.setPointerCapture(e.pointerId);
 },true);
 $('patchViewport').addEventListener?.('lostpointercapture',e=>{if(patchPan&&patchPan.pointerID===e.pointerId)endPatchPan();});
+
+function patchViewBounds(){
+ const cards=[...$('patchNodes').children];
+ return {
+  left:Math.max(0,Math.min(...patchGraph.Nodes.map(n=>n.X))-28),
+  top:Math.max(0,Math.min(...patchGraph.Nodes.map(n=>n.Y))-28),
+  right:Math.max(500,...cards.map(card=>card.offsetLeft+card.offsetWidth+28)),
+  bottom:Math.max(350,...cards.map(card=>card.offsetTop+card.offsetHeight+28)),
+ };
+}
+function fitPatchView(){
+ if(!patchGraph?.Nodes.length)return;
+ const viewport=$('patchViewport'),bounds=patchViewBounds();
+ if(!viewport.clientWidth||!viewport.clientHeight)return;
+ patchZoom=Math.max(.15,Math.min(1.2,(viewport.clientWidth-24)/(bounds.right-bounds.left),(viewport.clientHeight-24)/(bounds.bottom-bounds.top)));
+ $('patchStage').style.zoom=patchZoom;
+ viewport.scrollLeft=Math.max(0,bounds.left*patchZoom-12);
+ viewport.scrollTop=Math.max(0,bounds.top*patchZoom-12);
+ $('patchZoomLabel').textContent=Math.round(patchZoom*100)+'%';
+}
+function togglePatchFocus(enabled=!patchFocusView){
+ if(enabled===!!patchFocusView)return;
+ const viewport=$('patchViewport'),workspace=$('patchWorkspace'),button=$('patchFocus');
+ cancelPatchInteraction();endPatchPan();setPatchSpace(false);
+ if(enabled){
+  patchFocusView={zoom:patchZoom,left:viewport.scrollLeft,top:viewport.scrollTop};
+  patchFocusPrior=document.activeElement;
+  // Move the workspace out of any parent stacking contexts.
+  const marker=document.createComment('patch workspace');
+  workspace.before(marker);patchFocusView.marker=marker;
+  const signals=document.querySelector('.signal-dock');
+  if(signals){
+   const signalMarker=document.createComment('shared signals');
+   signals.before(signalMarker);
+   workspace.querySelector('.patch-workspace-bar').after(signals);
+   patchFocusView.signals=signals;patchFocusView.signalMarker=signalMarker;
+  }
+  document.body.append(workspace);
+  document.body.classList.add('patch-focused');
+  patchFocusView.background=[...document.body.children].filter(el=>el!==workspace&&el.tagName!=='SCRIPT'&&el.tagName!=='DIALOG'&&el.id!=='appLoader').map(el=>({el,inert:el.inert}));
+  for(const item of patchFocusView.background)item.el.inert=true;
+  button.textContent='Exit full screen';button.setAttribute('aria-pressed','true');button.focus();
+  requestAnimationFrame(()=>{if(patchFocusView)fitPatchView();});
+ }else{
+  const previous=patchFocusView;patchFocusView=null;
+  document.body.classList.remove('patch-focused');
+  if(previous.signals)previous.signalMarker.replaceWith(previous.signals);
+  previous.marker.replaceWith(workspace);
+  for(const item of previous.background)item.el.inert=item.inert;
+  patchZoom=previous.zoom;$('patchStage').style.zoom=patchZoom;
+  viewport.scrollLeft=previous.left;viewport.scrollTop=previous.top;
+  $('patchZoomLabel').textContent=Math.round(patchZoom*100)+'%';
+  button.textContent='Full screen';button.setAttribute('aria-pressed','false');
+  if(patchFocusPrior?.isConnected)patchFocusPrior.focus();
+ }
+}
+$('patchFocus').onclick=()=>togglePatchFocus();
+$('patchFit').onclick=fitPatchView;
+for(const [id,deltaY] of [['patchZoomIn',-70],['patchZoomOut',70]]){
+ $(id).onclick=()=>{
+  const viewport=$('patchViewport'),rect=viewport.getBoundingClientRect();
+  patchWheel({deltaY,clientX:rect.left+viewport.clientWidth/2,clientY:rect.top+viewport.clientHeight/2,preventDefault(){}});
+ };
+}

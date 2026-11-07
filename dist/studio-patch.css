@@ -33,3 +33,39 @@
 .eq-values input{width:100%;min-width:0;padding:5px 4px;border:1px solid #3f5845;border-radius:5px;background:#101a14;color:inherit;font-size:11px}
 
 .eq-help{font-size:10px;line-height:1.5;color:#9fb59e;margin:7px 0}
+
+/* Keep ports, cables and focused nodes inside the canvas stacking context. */
+.patch-workspace{position:relative;isolation:isolate;z-index:0}
+.patch-viewport{position:relative;isolation:isolate;z-index:0;overscroll-behavior:contain}
+.patch-stage{isolation:isolate}
+.patch-node{isolation:isolate}
+.patch-workspace-bar{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}
+.patch-workspace-bar>strong{font-size:15px}
+.patch-workspace-bar>strong>span{font-size:10px;font-weight:400;color:#8da18f;margin-left:9px}
+.patch-workspace-actions{display:flex;align-items:center;gap:8px}
+.patch-workspace-actions button{font-size:11px;padding:8px 12px}
+.patch-workspace-actions #patchZoomIn,.patch-workspace-actions #patchZoomOut{font-size:18px;line-height:1;padding:7px 11px}
+body.patch-focused{overflow:hidden}
+body.patch-focused .patch-workspace{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;gap:10px;padding:18px 24px;background:#101916;overflow:hidden}
+body.patch-focused .patch-workspace-bar{margin:0}
+body.patch-focused .patch-master{padding:10px 14px;margin:0}
+body.patch-focused #patchDefine{display:none}
+body.patch-focused .patch-presets{margin:0;gap:10px}
+body.patch-focused .patch-presets button{padding:7px 12px;font-size:11px}
+body.patch-focused .patch-controls{margin:0;gap:10px}
+body.patch-focused .patch-controls select{padding-top:9px;padding-bottom:9px}
+body.patch-focused .patch-viewport-tools{margin:0}
+body.patch-focused .patch-viewport{flex:1;min-height:0;max-height:none;overflow:hidden}
+body.patch-focused .patch-status{margin:0;min-height:18px}
+.brand>span>small{display:block;font-size:10px;letter-spacing:3px;text-transform:uppercase;line-height:1.5}
+@media(max-width:750px){
+ .patch-workspace-bar{align-items:flex-start;flex-wrap:wrap}
+ body.patch-focused .patch-workspace{padding:10px}
+ body.patch-focused .patch-presets{display:none}
+ body.patch-focused .patch-controls{flex-direction:row;flex-wrap:nowrap}
+ body.patch-focused .patch-controls select{width:0;min-width:0;font-size:11px}
+}
+
+body.patch-focused .signal-dock{position:static;z-index:auto;padding:8px 12px;border:1px solid #ffffff15;border-radius:10px;background:#142019;backdrop-filter:none}
+body.patch-focused .signal-dock canvas{height:24px}
+body.patch-focused .signal-dock .dock-controls{margin-top:5px;padding-top:5px}

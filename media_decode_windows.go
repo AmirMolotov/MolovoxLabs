@@ -41,7 +41,7 @@ func mediaTool(name string) (string, error) {
 	if len(matches) > 0 {
 		return matches[len(matches)-1], nil
 	}
-	return "", errors.New("FFmpeg is needed to open this media. Install FFmpeg and restart Quiet Lab")
+	return "", errors.New("FFmpeg is needed to open this media. Install FFmpeg and restart Molovox Labs")
 }
 func mediaCommand(ctx context.Context, name string, args ...string) (*exec.Cmd, error) {
 	tool, err := mediaTool(name)

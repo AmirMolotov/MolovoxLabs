@@ -11,7 +11,7 @@ import (
 
 func testVSTFilter(t *testing.T) MicFilter {
 	t.Helper()
-	path, err := filepath.Abs("native/test/QuietLabTestGain.vst3")
+	path, err := filepath.Abs("native/test/MolovoxTestGain.vst3")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,7 +22,7 @@ func testVSTFilter(t *testing.T) MicFilter {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plugins) != 1 || plugins[0].Name != "Quiet Lab Test Gain" {
+	if len(plugins) != 1 || plugins[0].Name != "Molovox Labs Test Gain" {
 		t.Fatal("VST scan failed", plugins)
 	}
 	return MicFilter{ID: "test-vst", Kind: "vst3", Enabled: true, PluginName: plugins[0].Name, PluginPath: path, ClassID: plugins[0].ClassID}

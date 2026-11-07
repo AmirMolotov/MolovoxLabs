@@ -136,7 +136,7 @@ func main() {
 		defer cancel()
 		server.Shutdown(ctx)
 	}()
-	windowTitle := "Quiet Lab — Soundboard Studio"
+	windowTitle := "Molovox Labs — Soundboard Studio"
 	if *dataRoot != "" {
 		windowTitle += " — Test profile"
 	}
@@ -149,7 +149,7 @@ func main() {
 	}
 	defer window.Destroy()
 	window.SetSize(760, 600, webview.HintMin)
-	setQuietLabIcon(uintptr(window.Window()))
+	setMolovoxIcon(uintptr(window.Window()))
 	window.Init("window.QUIET_DESKTOP=true;window.QUIET_NATIVE=true;")
 	scanner := &vstScanner{}
 	defer engine.Close()
@@ -221,7 +221,7 @@ func main() {
 		},
 		"nativeAbortSamplerRecording": func(id string) { engine.endSamplerTap(id); recorder.abort(id) },
 		"nativeExportSamplerRecording": func(id string) (string, error) {
-			path, err := chooseAudioExportFile(uintptr(window.Window()), "Quiet Lab performance", ".webm")
+			path, err := chooseAudioExportFile(uintptr(window.Window()), "Molovox Labs performance", ".webm")
 			if err != nil || path == "" {
 				return "", err
 			}
