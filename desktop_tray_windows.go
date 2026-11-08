@@ -286,8 +286,7 @@ func (t *desktopTray) show() {
 	} else {
 		user32.NewProc("ShowWindow").Call(t.hwnd, 5)
 	}
-	user32.NewProc("SetForegroundWindow").Call(t.hwnd)
-	user32.NewProc("BringWindowToTop").Call(t.hwnd)
+	focusTrayWindow(t.hwnd)
 	if t.open != nil {
 		t.open()
 	}

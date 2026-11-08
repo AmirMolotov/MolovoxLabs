@@ -9,7 +9,7 @@ async function showTraySoundboard(){
   openTab('board');
   if(typeof clearBoardSearch==='function')clearBoardSearch();
   // Focus the board itself so typing immediately searches rather than editing a field.
-  $('board').tabIndex=-1;$('board').focus({preventScroll:true});
+  window.focus();$('board').tabIndex=-1;$('board').focus({preventScroll:true});
  }finally{trayOpening=false;}
 }
 window.addEventListener('molovox-open-soundboard',showTraySoundboard);
