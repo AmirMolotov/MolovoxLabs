@@ -473,5 +473,8 @@ func (s *appStore) ImportAudioMedia(path string) (MediaInfo, error) {
 	if err == nil && !info.HasAudio {
 		err = errors.New("This file has no audio track")
 	}
+	if err != nil {
+		_ = s.ReleaseAudioTrimSource(source.ID)
+	}
 	return info, err
 }

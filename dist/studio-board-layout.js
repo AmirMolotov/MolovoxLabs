@@ -1,5 +1,6 @@
 'use strict';
 // Board layout is stored with the library, so grouping travels with exports too.
+let boardLayoutPending=null;
 let boardLayoutSaving=false,boardPadDrag=null,boardSearchTimer=null,boardSearchPlayTimer=null;
 let boardSearch={query:'',played:null};
 function currentSoundboard(){return library.Boards.find(b=>b.ID===$('boardSelect').value);}
@@ -13,10 +14,10 @@ function moveBoardPad(board,id,groupID,beforeID){
 async function persistBoardLayout(board,redraw=true){
  if(boardLayoutSaving)return;boardLayoutSaving=true;$('soundPads').inert=true;$('createPadGroup').disabled=true;
  try{
-  const updated=await nativeSaveBoardLayout(board.ID,board.Sounds.map(s=>({ID:s.ID,GroupID:s.GroupID||''})),board.Groups||[]);
+  const updated=await (boardLayoutPending=nativeSaveBoardLayout(board.ID,board.Sounds.map(s=>({ID:s.ID,GroupID:s.GroupID||''})),board.Groups||[]));
   library=updated;if(redraw&&currentSoundboard()?.ID===board.ID)renderPads();
  }catch(e){message(errorText(e));try{library=await nativeLibrary();renderPads();}catch(_){} }
- finally{boardLayoutSaving=false;$('soundPads').inert=false;$('createPadGroup').disabled=false;}
+ finally{boardLayoutPending=null;boardLayoutSaving=false;$('soundPads').inert=false;$('createPadGroup').disabled=false;}
 }
 function boardButton(label,cls,action){const b=document.createElement('button');b.type='button';b.className=cls;b.textContent=label;b.onclick=action;return b;}
 function boardDropZone(node,board,groupID,beforeID){

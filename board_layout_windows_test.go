@@ -87,3 +87,45 @@ func TestBoardLayoutTravelsWithEmbeddedAudioExport(t *testing.T) {
 		t.Fatal("import lost grouping or reused audio ID", imported)
 	}
 }
+func TestBoardPackagePreservesGroupAndPadOrderWithOptionalShortcuts(t *testing.T) {
+	s := &appStore{root: t.TempDir()}
+	os.MkdirAll(filepath.Join(s.root, "sounds"), 0700)
+	board := SoundBoard{ID: "board", Name: "Ordered", Groups: []PadGroup{{ID: "second", Name: "Second", Collapsed: true}, {ID: "first", Name: "First"}}, Sounds: []SoundEntry{
+		{ID: "b", Name: "B", File: "b.wav", GroupID: "first", Hotkey: &KeyBinding{Key: 112, Modifiers: 2, Label: "Ctrl+F1"}, MIDI: &MIDIBinding{Kind: "note", Number: 36, Channel: 1}},
+		{ID: "a", Name: "A", File: "a.wav", GroupID: "second", Hotkeys: []KeyBinding{{Key: 113, Modifiers: 2, Label: "Ctrl+F2"}}},
+		{ID: "c", Name: "C", File: "c.wav"},
+	}}
+	for _, sound := range board.Sounds {
+		os.WriteFile(filepath.Join(s.root, "sounds", sound.File), wavFixture(), 0600)
+	}
+	s.write("soundboards.json", libraryState{Boards: []SoundBoard{board}})
+	archive := filepath.Join(t.TempDir(), "ordered.qlboard")
+	if err := s.ExportBoard(board.ID, archive); err != nil {
+		t.Fatal(err)
+	}
+	for _, include := range []bool{false, true} {
+		dest := &appStore{root: t.TempDir()}
+		l, err := dest.ImportBoard(archive, include)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b := l.Boards[len(l.Boards)-1]
+		if !reflect.DeepEqual(b.Groups, board.Groups) {
+			t.Fatal("group order or collapse state lost")
+		}
+		for i, sound := range b.Sounds {
+			if sound.Name != board.Sounds[i].Name || sound.GroupID != board.Sounds[i].GroupID {
+				t.Fatal("pad order or membership lost")
+			}
+			if _, err := dest.Sound(sound.ID); err != nil {
+				t.Fatal(err)
+			}
+			if !include && (len(soundKeys(sound)) != 0 || len(soundMIDIs(sound)) != 0 || sound.Hotkey != nil || sound.MIDI != nil) {
+				t.Fatal("shortcuts retained without consent")
+			}
+		}
+		if include && (len(soundKeys(b.Sounds[0])) != 1 || len(soundMIDIs(b.Sounds[0])) != 1 || len(soundKeys(b.Sounds[1])) != 1) {
+			t.Fatal("requested shortcuts missing")
+		}
+	}
+}

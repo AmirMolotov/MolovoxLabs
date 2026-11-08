@@ -240,6 +240,7 @@ func main() {
 		"nativeBeginMicRecording":        engine.beginMicRecording,
 		"nativeAbortMicRecording":        engine.abortMicRecording,
 		"nativeCreateSamplerBoard":       store.CreateSamplerBoard,
+		"nativeReleaseAudioTrimSource":   store.ReleaseAudioTrimSource,
 		"nativePrepareMedia":             store.PrepareMedia,
 		"nativeSetPlaybackMode":          engine.SetPlaybackMode,
 		"nativeImportAudioMedia": func() (MediaInfo, error) {
@@ -463,7 +464,7 @@ func main() {
 			}
 			return path, store.ExportBoard(id, path)
 		},
-		"nativeImportBoard": func() (libraryState, error) {
+		"nativeImportBoard": func(includeShortcuts bool) (libraryState, error) {
 			path, err := chooseBoardFile(uintptr(window.Window()), false)
 			if err != nil {
 				return libraryState{}, err
@@ -471,7 +472,7 @@ func main() {
 			if path == "" {
 				return store.Library()
 			}
-			l, err := store.ImportBoard(path)
+			l, err := store.ImportBoard(path, includeShortcuts)
 			if err != nil {
 				return l, err
 			}

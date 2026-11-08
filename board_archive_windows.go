@@ -130,7 +130,8 @@ func readZipFile(f *zip.File, max int64) ([]byte, error) {
 	}
 	return data, err
 }
-func (s *appStore) ImportBoard(path string) (libraryState, error) {
+func (s *appStore) ImportBoard(path string, importShortcuts ...bool) (libraryState, error) {
+	includeShortcuts := len(importShortcuts) == 0 || importShortcuts[0]
 	z, err := zip.OpenReader(path)
 	if err != nil {
 		return libraryState{}, err
@@ -232,6 +233,10 @@ func (s *appStore) ImportBoard(path string) (libraryState, error) {
 	}
 	for i := range pkg.Board.Sounds {
 		sound := &pkg.Board.Sounds[i]
+		if !includeShortcuts {
+			sound.Hotkey, sound.MIDI = nil, nil
+			sound.Hotkeys, sound.MIDIs = nil, nil
+		}
 		keys := []KeyBinding{}
 		midis := []MIDIBinding{}
 		for _, key := range soundKeys(*sound) {

@@ -186,12 +186,9 @@ $('confirmDeleteBoard').onclick=async()=>{
 
 $('createBoard').onclick=async()=>{try{library=await nativeCreateBoard($('boardName').value);$('boardName').value='';renderLibrary(library.Boards.at(-1).ID);await save();}catch(e){message(errorText(e));}};
 $('stopSounds').onclick=async()=>{await nativeStopSounds();updatePlayback([]);$('boardStatus').textContent='All sounds stopped.';};
-$('exportBoard').onclick=async()=>{try{const path=await withLoading('Exporting soundboard and audio…',()=>nativeExportBoard($('boardSelect').value),true);if(path)$('boardStatus').textContent='Exported board, original audio files and all trigger assignments in one .qlboard package.';}catch(e){message(errorText(e));}};
-$('importBoard').onclick=async()=>{
- $('importBoard').disabled=true;
- try{const count=library.Boards.length,id=$('boardSelect').value;library=await withLoading('Importing soundboard and audio…',()=>nativeImportBoard(),true);renderLibrary(library.Boards.length>count?library.Boards.at(-1)?.ID:id);await save();$('boardStatus').textContent='Board and embedded audio imported. Conflicting triggers remain unassigned.';}
- catch(e){message(errorText(e));}finally{$('importBoard').disabled=false;}
-};
+$('exportBoard').onclick=async()=>{try{const boardID=$('boardSelect').value;if(typeof boardLayoutPending!=='undefined'&&boardLayoutPending)await boardLayoutPending;const path=await withLoading('Exporting soundboard and audio…',()=>nativeExportBoard(boardID),true);if(path)$('boardStatus').textContent='Exported audio, groups, pad order and shortcuts in one .qlboard package.';}catch(e){message(errorText(e));}};
+$('importBoard').onclick=()=>openBoardImport();
+
 function loadFilterModels(p){
  micFilters=p.Options?.Filters||[];filterGroups=p.FilterGroups||[];allFilterHotkeys=p.AllFilterHotkeys||[];allFilterMIDIs=p.AllFilterMIDIs||[];bypassFilters=!!p.Options?.BypassFilters;renderFilters();renderGroups();
 }
