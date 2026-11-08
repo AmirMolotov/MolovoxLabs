@@ -14,7 +14,7 @@ function defaultPatch(mode='mic',enabled=false){
  cables.push({From:last.ID,To:out.ID},{From:(mode==='board'?mic:board).ID,To:out.ID});
  const clips=new Set(library.Boards.flatMap(b=>b.Sounds).map(s=>s.ID));let row=0;
  for(const clipID of new Set(micFilters.filter(f=>f.ClipID&&clips.has(f.ClipID)).map(f=>f.ClipID))){const source=patchNode('clip',{ClipID:clipID},40,450+row*160);nodes.push(source);let cursor=source;micFilters.filter(f=>f.ClipID===clipID).forEach((filter,index)=>{const effect=patchNode('effect',{FilterID:filter.ID},310+index*260,source.Y);nodes.push(effect);cables.push({From:cursor.ID,To:effect.ID});cursor=effect;});cables.push({From:cursor.ID,To:out.ID});row++;}
- return {Version:1,Enabled:enabled,Preset:mode,Nodes:nodes,Cables:cables};
+ return {Version:1,Enabled:enabled,Preset:mode,Nodes:nodes,Cables:cables,Templates:patchGraph?.Templates||[]};
 }
 function inferPatchPreset(graph){
  const mic=graph.Nodes.filter(n=>n.Kind==='mic'),board=graph.Nodes.filter(n=>n.Kind==='board'&&!n.BoardID),out=graph.Nodes.filter(n=>n.Kind==='output'&&!n.DeviceID),effects=graph.Nodes.filter(n=>n.Kind==='effect');
@@ -38,9 +38,11 @@ function patchOptions(){
  syncPatchPreset();
  const clips=new Set(library.Boards.flatMap(b=>b.Sounds).map(s=>s.ID)),effects=new Set(micFilters.filter(f=>!f.ClipID||clips.has(f.ClipID)).map(f=>f.ID));patchGraph.Nodes=patchGraph.Nodes.filter(n=>(n.Kind!=='effect'||effects.has(n.FilterID))&&(n.Kind!=='clip'||clips.has(n.ClipID)));
  const nodes=new Set(patchGraph.Nodes.map(n=>n.ID));patchGraph.Cables=patchGraph.Cables.filter(c=>nodes.has(c.From)&&nodes.has(c.To));
+ if(typeof prunePatchGroups==='function')prunePatchGroups();
  return structuredClone(patchGraph);
 }
 function patchName(node){
+ if(node.Kind==='group')return node.Name;
  if(node.Kind==='mic')return 'Microphone mix';
  if(node.Kind==='clip')return library.Boards.flatMap(b=>b.Sounds).find(s=>s.ID===node.ClipID)?.Name||'Missing pad';
  if(node.Kind==='board')return node.BoardID?(library.Boards.find(b=>b.ID===node.BoardID)?.Name||'Missing board'):'All boards + video samplers';
@@ -81,18 +83,24 @@ function attachClipEffect(sourceID,kind){
 }
 async function commitPatch(){renderPatch();await configure();}
 function cancelPatchInteraction(){
+ if(patchDragging?.group){cancelPatchGroupMove();return;}
  const move=patchDragging,hadCable=!!patchPending;patchDragging=null;patchPending=null;patchPointer=null;
  if(move){const node=patchGraph.Nodes.find(n=>n.ID===move.node.ID);if(node){node.X=move.startX;node.Y=move.startY;}move.card.style.left=move.startX+'px';move.card.style.top=move.startY+'px';if(move.header?.hasPointerCapture(move.pointerID))move.header.releasePointerCapture(move.pointerID);renderPatch();}
  else drawPatchCables();
  if(move||hadCable)patchStatus(move?'Node move cancelled.':'Cable connection cancelled.');
 }
 function patchCableAllowed(from,to){
+ if(typeof patchGroupByID==='function'&&(patchGroupByID(from)||patchGroupByID(to)))return patchGroupConnectionAllowed(from,to);
+ return patchRawCableAllowed(from,to);
+}
+function patchRawCableAllowed(from,to){
  if(from===to)return false;const a=patchGraph.Nodes.find(n=>n.ID===from),b=patchGraph.Nodes.find(n=>n.ID===to);
  if(!a||!b||a.Kind==='output'||b.Kind==='mic'||b.Kind==='board'||b.Kind==='clip')return false;
  const visit=(id,seen=new Set())=>{if(id===from)return true;if(seen.has(id))return false;seen.add(id);return patchGraph.Cables.filter(c=>c.From===id).some(c=>visit(c.To,seen));};
  return !visit(to)&&!patchGraph.Cables.some(c=>c.From===from&&c.To===to);
 }
 function connectPatch(from,to){
+ if(typeof patchGroupByID==='function'&&(patchGroupByID(from)||patchGroupByID(to))){connectPatchGroups(from,to);return;}
  if(!patchCableAllowed(from,to)){patchStatus('That cable would duplicate a connection or create a feedback loop.');patchPending=null;drawPatchCables();return;}
  patchGraph.Preset='';patchGraph.Cables.push({From:from,To:to});patchPending=null;patchPointer=null;commitPatch();
 }
@@ -102,11 +110,13 @@ function drawPatchCables(){
   const element=document.createElementNS('http://www.w3.org/2000/svg','path'),bend=Math.max(75,Math.abs(to.x-from.x)*.45);
   element.setAttribute('d',`M ${from.x} ${from.y} C ${from.x+bend} ${from.y}, ${to.x-bend} ${to.y}, ${to.x} ${to.y}`);
   element.setAttribute('class','patch-cable'+(ghost?' ghost':''));
-  if(cable){element.setAttribute('tabindex','0');element.setAttribute('role','button');element.setAttribute('aria-label','Unplug '+patchName(cable.a)+' from '+patchName(cable.b));const unplug=()=>{patchGraph.Preset='';patchGraph.Cables=patchGraph.Cables.filter(c=>c!==cable.edge);commitPatch();};element.onclick=unplug;element.onkeydown=e=>{if(['Enter',' ','Delete','Backspace'].includes(e.key)){e.preventDefault();unplug();}};}
+  if(cable){element.setAttribute('tabindex','0');element.setAttribute('role','button');element.setAttribute('aria-label','Unplug '+patchName(cable.a)+' from '+patchName(cable.b));const unplug=()=>{patchGraph.Preset='';patchGraph.Cables=patchGraph.Cables.filter(c=>!(cable.edges||[cable.edge]).includes(c));commitPatch();};element.onclick=unplug;element.onkeydown=e=>{if(['Enter',' ','Delete','Backspace'].includes(e.key)){e.preventDefault();unplug();}};}
   svg.append(element);
  };
- for(const edge of patchGraph.Cables){const a=patchGraph.Nodes.find(n=>n.ID===edge.From),b=patchGraph.Nodes.find(n=>n.ID===edge.To);if(a&&b)path({x:a.X+patchWidth,y:a.Y+patchPortY},{x:b.X,y:b.Y+patchPortY},false,{a,b,edge});}
- if(patchPending){const a=patchGraph.Nodes.find(n=>n.ID===patchPending);if(a)path({x:a.X+patchWidth,y:a.Y+patchPortY},patchPointer||{x:a.X+patchWidth+100,y:a.Y+patchPortY},true);}
+ const visible=typeof patchVisibleCables==='function'?patchVisibleCables():patchGraph.Cables.map(edge=>({a:patchGraph.Nodes.find(n=>n.ID===edge.From),b:patchGraph.Nodes.find(n=>n.ID===edge.To),edges:[edge]}));
+ for(const cable of visible){const {a,b}=cable;if(a&&b)path({x:a.X+patchWidth,y:a.Y+patchPortY},{x:b.X,y:b.Y+patchPortY},false,cable);}
+ if(patchPending){const a=typeof patchVisualNode==='function'?patchVisualNode(patchPending):patchGraph.Nodes.find(n=>n.ID===patchPending);if(a)path({x:a.X+patchWidth,y:a.Y+patchPortY},patchPointer||{x:a.X+patchWidth+100,y:a.Y+patchPortY},true);}
+
 }
 function sizePatchStage(){
  const stage=$('patchStage');
@@ -127,11 +137,12 @@ function renderPatch(){
  const nodes=$('patchNodes');patchResize?.disconnect();nodes.replaceChildren();
  for(const id of patchExpanded)if(!patchGraph.Nodes.some(n=>n.ID===id))patchExpanded.delete(id);
  for(const node of patchGraph.Nodes){
+  if(typeof patchNodeHidden==='function'&&patchNodeHidden(node.ID))continue;
   const card=document.createElement('article');const clip=library.Boards.flatMap(b=>b.Sounds).find(s=>s.ID===node.ClipID),isVideo=node.Kind==='board'&&library.Boards.some(b=>b.ID===node.BoardID&&b.Kind==='video');card.className='patch-node '+node.Kind+(isVideo?' video-source':'');card.style.left=node.X+'px';card.style.top=node.Y+'px';card.dataset.patchNode=node.ID;
   const header=document.createElement('div');header.className='patch-node-header';const kind=document.createElement('span');kind.className='patch-node-kind';kind.textContent=node.Kind==='clip'?(clip?.Video?'VIDEO PAD':'SOUND PAD'):isVideo?'VIDEO SAMPLER':{mic:'INPUT',board:'SOUNDBOARD',effect:'EFFECT',output:'OUTPUT'}[node.Kind];
-  const remove=document.createElement('button');remove.className='icon-close patch-remove';remove.setAttribute('aria-label','Remove '+patchName(node)+' from patch bay');remove.onclick=()=>{patchGraph.Preset='';patchGraph.Nodes=patchGraph.Nodes.filter(n=>n.ID!==node.ID);patchGraph.Cables=patchGraph.Cables.filter(c=>c.From!==node.ID&&c.To!==node.ID);commitPatch();};header.append(kind,remove);
+  const remove=document.createElement('button');remove.className='icon-close patch-remove';remove.setAttribute('aria-label','Remove '+patchName(node)+' from patch bay');remove.onclick=()=>{patchGraph.Preset='';patchGraph.Nodes=patchGraph.Nodes.filter(n=>n.ID!==node.ID);patchGraph.Cables=patchGraph.Cables.filter(c=>c.From!==node.ID&&c.To!==node.ID);commitPatch();};header.append(kind,remove);if(typeof decoratePatchGroupSelection==='function')decoratePatchGroupSelection(node,header,card);
   header.onpointerdown=e=>{
-   if(e.button!==0||e.target.closest('button'))return;
+   if(e.button!==0||e.target.closest('button,input,select'))return;
    const current=patchGraph.Nodes.find(n=>n.ID===node.ID);
    if(!current)return;
    patchDragging={node:current,card,header,pointerID:e.pointerId,x:e.clientX,y:e.clientY,startX:current.X,startY:current.Y};
@@ -157,11 +168,13 @@ function renderPatch(){
   };
   if(node.Kind==='effect'||node.Kind==='output')port('in');if(node.Kind!=='output')port('out');nodes.append(card);patchResize?.observe(card);
  }
+ if(typeof renderPatchGroups==='function')renderPatchGroups();
  sizePatchStage();drawPatchCables();patchStatus();
 }
 window.addEventListener('pointermove',e=>{
  if(patchPan&&patchPan.pointerID===e.pointerId){const p=patchPan;patchCameraX=p.left+e.clientX-p.x;patchCameraY=p.top+e.clientY-p.y;applyPatchCamera();return;}
- if(patchDragging){const d=patchDragging,node=patchGraph.Nodes.find(n=>n.ID===d.node.ID);if(!node)return;d.node=node;d.node.X=Math.round(d.startX+(e.clientX-d.x)/patchZoom);d.node.Y=Math.round(d.startY+(e.clientY-d.y)/patchZoom);d.card.style.left=d.node.X+'px';d.card.style.top=d.node.Y+'px';drawPatchCables();}
+ if(patchDragging?.group){movePatchGroup(e);return;}
+ if(patchDragging){const d=patchDragging,node=patchGraph.Nodes.find(n=>n.ID===d.node.ID);if(!node)return;d.node=node;d.node.X=Math.round(d.startX+(e.clientX-d.x)/patchZoom);d.node.Y=Math.round(d.startY+(e.clientY-d.y)/patchZoom);d.card.style.left=d.node.X+'px';d.card.style.top=d.node.Y+'px';if(typeof updatePatchGroupFrames==='function')updatePatchGroupFrames();drawPatchCables();}
  else if(patchPending){const rect=$('patchStage').getBoundingClientRect();patchPointer={x:(e.clientX-rect.left)/patchZoom,y:(e.clientY-rect.top)/patchZoom};drawPatchCables();}
 });
 window.addEventListener('pointerup',e=>{
@@ -240,8 +253,8 @@ $('patchViewport').addEventListener?.('lostpointercapture',e=>{if(patchPan&&patc
 function patchViewBounds(){
  const cards=[...$('patchNodes').children];
  return {
-  left:Math.min(...patchGraph.Nodes.map(n=>n.X))-28,
-  top:Math.min(...patchGraph.Nodes.map(n=>n.Y))-28,
+  left:Math.min(...cards.map(card=>card.offsetLeft))-28,
+  top:Math.min(...cards.map(card=>card.offsetTop))-28,
   right:Math.max(...cards.map(card=>card.offsetLeft+card.offsetWidth+28)),
   bottom:Math.max(...cards.map(card=>card.offsetTop+card.offsetHeight+28)),
  };

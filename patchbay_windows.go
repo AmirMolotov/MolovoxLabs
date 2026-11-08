@@ -13,12 +13,26 @@ type PatchNode struct {
 	X, Y                                  float64
 }
 type PatchCable struct{ From, To string }
+type PatchGroup struct {
+	ID, Name  string
+	NodeIDs   []string
+	X, Y      float64
+	Collapsed bool
+}
+type PatchTemplate struct {
+	ID, Name string
+	Nodes    []PatchNode
+	Cables   []PatchCable
+	Filters  []MicFilter
+}
 type PatchBay struct {
-	Version int
-	Preset  string
-	Enabled bool
-	Nodes   []PatchNode
-	Cables  []PatchCable
+	Groups    []PatchGroup    `json:",omitempty"`
+	Templates []PatchTemplate `json:",omitempty"`
+	Version   int
+	Preset    string
+	Enabled   bool
+	Nodes     []PatchNode
+	Cables    []PatchCable
 }
 type patchStep struct {
 	kind, boardID, deviceID string

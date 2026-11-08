@@ -82,3 +82,13 @@ aside .brand>span>small{font-size:10px;line-height:1.6;letter-spacing:3px}
 body.patch-focused .patch-viewport{cursor:grab}
 
 .patch-viewport,body.patch-focused .patch-viewport{overflow:clip}
+.patch-group-tools{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin:0 0 14px;font-size:12px}.patch-group-tools .hint{margin:0}
+.patch-node-select{width:15px!important;height:15px!important;flex-shrink:0;margin:0 7px 0 0;cursor:pointer;accent-color:#c7a7ff}.patch-node-header .patch-node-kind{flex:1}.patch-node.patch-selected{outline:2px solid #d4b9ff;outline-offset:3px}
+.patch-node.patch-group-card{border-color:#b89ae0;background:linear-gradient(135deg,#342c44,#1b2530)}
+.patch-group-card>.patch-group-title{display:block;width:100%;border:0;background:transparent;color:#f4eaff;font-size:14px;text-align:left;padding:0;line-height:1.5;white-space:normal;overflow-wrap:anywhere}
+.patch-group-actions{display:flex;gap:14px;margin-top:12px}.patch-group-actions .text-button{color:#cbb7e9}.patch-group-card .clip-add-effect{font-size:10px;margin:12px 0 0;min-height:34px;padding:7px 27px 7px 9px;background-position:right 9px center}.patch-group-rename{border:0;background:transparent;color:#d7bdfa;font-size:17px;padding:3px}
+.patch-group-frame{position:absolute;border:1px dashed #af88d575;border-radius:17px;background:#b38dec08;pointer-events:none}.patch-group-member{border-color:#9175af;animation:patch-group-reveal .2s ease-out}
+@keyframes patch-group-reveal{from{opacity:0;transform:translateY(-7px) scale(.98)}to{opacity:1;transform:none}}
+.patch-template-library{position:relative;margin-left:auto}.patch-template-library summary{padding:10px;border:1px solid #886e9d;border-radius:8px;color:#d2bde6}.patch-template-library[open]>div{position:absolute;right:0;top:42px;z-index:20;width:min(420px,80vw);max-height:280px;overflow:auto;padding:14px;background:#17251d;border:1px solid #746086;border-radius:12px;box-shadow:0 12px 30px #0008}.patch-template-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #ffffff12}.patch-template-row strong{flex:1;min-width:0;font-size:12px;overflow-wrap:anywhere}.patch-template-row .icon-close{width:25px;height:25px;min-width:25px}
+#patchGroupDialog input{margin:12px 0;width:100%}
+@media(prefers-reduced-motion:reduce){.patch-group-member{animation:none}}

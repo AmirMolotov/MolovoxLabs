@@ -14,3 +14,8 @@ async function showTraySoundboard(){
 }
 window.addEventListener('molovox-open-soundboard',showTraySoundboard);
 if(window.MOLOVOX_OPEN_SOUNDBOARD)showTraySoundboard();
+
+function updateAppFocusBorder(focused){document.body.classList.toggle('app-has-focus',focused);}
+window.addEventListener('focus',()=>updateAppFocusBorder(true));
+window.addEventListener('blur',()=>updateAppFocusBorder(false));
+if(typeof document.hasFocus==='function')updateAppFocusBorder(document.hasFocus());

@@ -286,6 +286,7 @@ func main() {
 		"nativeScanVST":                func(folders []string) error { return scanner.start(store, folders) },
 		"nativeVSTScanStatus":          scanner.snapshot,
 		"nativeLoadVSTPlugins":         store.VSTLibrary,
+		"nativeSnapshotEffects":        engine.vst.capture,
 		"nativeVSTInfo":                engine.vst.info,
 		"nativeVSTEditor":              engine.vst.editor,
 		"nativeVSTParameter": func(id string, param uint32, value float64) error {
