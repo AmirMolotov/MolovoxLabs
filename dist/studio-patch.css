@@ -97,3 +97,4 @@ body.patch-focused .patch-viewport{cursor:grab}
 .patch-marquee{position:absolute;z-index:15;border:1px solid #b9ed86;background:#b9ed861c;border-radius:3px;pointer-events:none}.patch-marquee[hidden]{display:none!important}
 .patch-selection-menu{position:fixed;z-index:1000;min-width:210px;padding:6px;border:1px solid #638452;border-radius:10px;background:#1a2b20;box-shadow:0 12px 35px #0009}.patch-selection-menu[hidden]{display:none!important}
 .patch-selection-menu button{display:block;width:100%;padding:12px 16px;border:0;border-radius:6px;background:transparent;color:#e0f2d8;font-size:13px;text-align:left}.patch-selection-menu button:hover,.patch-selection-menu button:focus{background:#b9ed8617}
+.patch-viewport:focus,.patch-viewport:focus-visible{outline:none}

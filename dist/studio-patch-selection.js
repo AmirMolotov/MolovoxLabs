@@ -15,7 +15,7 @@ function beginPatchSelection(e){
  const viewport=$('patchViewport'),bounds=viewport.getBoundingClientRect(),initial=[...patchSelectedNodes],base=e.shiftKey||e.ctrlKey||e.metaKey?initial:[];
  const cards=[...$('patchNodes').querySelectorAll('.patch-node')].map(card=>({id:card.dataset.patchNode,rect:card.getBoundingClientRect()}));
  const box=document.createElement('div');box.className='patch-marquee';box.hidden=true;box.setAttribute('aria-hidden','true');viewport.append(box);
- patchMarquee={viewport,bounds,pointerID:e.pointerId,x:e.clientX,y:e.clientY,initial,base,cards,box,moved:false};replacePatchSelection(base);viewport.setPointerCapture(e.pointerId);
+ patchMarquee={viewport,bounds,pointerID:e.pointerId,x:e.clientX,y:e.clientY,initial,base,cards,box,moved:false};replacePatchSelection(base);viewport.tabIndex=-1;viewport.focus({preventScroll:true});viewport.setPointerCapture(e.pointerId);
 }
 function movePatchSelection(e){
  const d=patchMarquee;if(!d||e.pointerId!==d.pointerID)return;e.preventDefault();
@@ -48,3 +48,22 @@ $('patchViewport').addEventListener('lostpointercapture',e=>{if(patchMarquee&&e.
 window.addEventListener('blur',()=>{finishPatchSelection(true);closePatchSelectionMenu();});
 document.addEventListener('pointerdown',e=>{if(!$('patchSelectionMenu').contains(e.target))closePatchSelectionMenu();},true);
 $('patchSelectionMenu').onkeydown=e=>{if(e.key==='ArrowUp'||e.key==='ArrowDown'){e.preventDefault();$('patchSelectionGroup').focus();}};
+
+function deleteSelectedPatchNodes(){
+ if(!patchGraph||!patchSelectedNodes.size)return false;
+ const removed=new Set(patchGraph.Nodes.filter(n=>patchSelectedNodes.has(n.ID)).map(n=>n.ID));
+ if(!removed.size)return false;
+ patchGraph.Preset='';patchGraph.Nodes=patchGraph.Nodes.filter(n=>!removed.has(n.ID));
+ patchGraph.Cables=patchGraph.Cables.filter(c=>!removed.has(c.From)&&!removed.has(c.To));
+ for(const group of patchGraph.Groups||[])group.NodeIDs=group.NodeIDs.filter(id=>!removed.has(id));
+ patchGraph.Groups=(patchGraph.Groups||[]).filter(g=>g.NodeIDs.length);
+ for(const id of removed)patchExpanded.delete(id);
+ patchPending=null;patchPointer=null;patchSelectedNodes.clear();closePatchSelectionMenu();
+ commitPatch();patchStatus(removed.size+' '+(removed.size===1?'node removed':'nodes removed')+' from Patch bay.');return true;
+}
+document.addEventListener('keydown',e=>{
+ if(e.key!=='Delete'||e.defaultPrevented||e.repeat||e.isComposing||e.ctrlKey||e.altKey||e.metaKey||e.shiftKey||currentTab!=='patch'||!patchSelectedNodes.size)return;
+ if(document.querySelector('dialog[open]')||patchDragging||patchPan||patchMarquee)return;
+ if(e.target.closest?.('input:not(.patch-node-select),textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],[role="slider"],[role="spinbutton"],[role="combobox"],.patch-cable'))return;
+ e.preventDefault();e.stopImmediatePropagation();deleteSelectedPatchNodes();
+},true);
