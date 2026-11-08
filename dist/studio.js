@@ -7,6 +7,7 @@ let micFilters=[],filterGroups=[],allFilterHotkeys=[],allFilterMIDIs=[],bypassFi
 let wantListening=false,routeApplying=false,routeDirty=false,routeTimer=null;
 let padViews=new Map(),playingSounds=new Map();
 function openTab(name){
+ if(name!==currentTab&&typeof clearBoardSearch==='function')clearBoardSearch();
  if(name!=='arrange'&&typeof toggleArrangementFocus==='function')toggleArrangementFocus(false);
  if(name!=='arrange'&&typeof stopArrangementMediaPreview==='function')stopArrangementMediaPreview();
  if(name!=='patch'&&typeof patchFocusView!=='undefined'&&patchFocusView)togglePatchFocus(false);
@@ -129,10 +130,11 @@ function renderLibrary(preferred){
 function clipKeys(sound){return sound.Hotkeys??(sound.Hotkey?[sound.Hotkey]:[]);}
 function clipMIDIs(sound){return sound.MIDIs??(sound.MIDI?[sound.MIDI]:[]);}
 function renderPads(){
+ if(typeof clearBoardSearch==='function')clearBoardSearch(false);
  $('soundPads').replaceChildren();padViews=new Map();
  const board=library.Boards.find(b=>b.ID===$('boardSelect').value);
  $('boardMeta').textContent=(board?.Sounds.length||0)+' sounds · click to play or stop';
- if(!board?.Sounds.length){const empty=document.createElement('div');empty.className='empty sound-empty';empty.textContent='Make some noise. Add your first sound to start building this board.';$('soundPads').append(empty);return;}
+ if(!board?.Sounds.length){const empty=document.createElement('div');empty.className='empty sound-empty';empty.textContent='Make some noise. Add your first sound to start building this board.';$('soundPads').append(empty);if(board?.Groups?.length&&typeof decorateSoundboard==='function')decorateSoundboard(board);return;}
  for(const sound of board.Sounds){
   const pad=document.createElement('article');pad.className='sound-pad';
   const fill=document.createElement('div');fill.className='playback-fill';pad.append(fill);
@@ -153,6 +155,7 @@ function renderPads(){
   play.onclick=async()=>{if(playingSounds.has(sound.ID)){await nativeStopSound(sound.ID);return;}if(!active&&!await start())return;play.disabled=true;try{await withLoading('Loading sound…',()=>nativePlaySound(sound.ID));$('boardStatus').textContent='Playing '+sound.Name+'.';}catch(e){message(errorText(e));}finally{play.disabled=false;}};
   padViews.set(sound.ID,{pad,fill,playIcon,time,stops:[stop1,stop2],sound});$('soundPads').append(pad);
  }
+ if(typeof decorateSoundboard==='function')decorateSoundboard(board);
  updatePlayback([...playingSounds.values()]);
 }
 function updatePlayback(items){

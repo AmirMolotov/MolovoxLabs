@@ -40,6 +40,7 @@ type Preferences struct {
 	Options              AudioOptions
 }
 type SoundEntry struct {
+	GroupID  string       `json:",omitempty"`
 	Video    *VideoSample `json:",omitempty"`
 	Hotkeys  []KeyBinding
 	MIDIs    []MIDIBinding
@@ -52,7 +53,8 @@ type SoundEntry struct {
 	Seconds  float64
 }
 type SoundBoard struct {
-	Kind   string `json:",omitempty"`
+	Groups []PadGroup `json:",omitempty"`
+	Kind   string     `json:",omitempty"`
 	ID     string
 	Name   string
 	Sounds []SoundEntry

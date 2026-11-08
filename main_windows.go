@@ -385,9 +385,10 @@ func main() {
 			}
 			return "", fmt.Errorf("Sound not found")
 		},
-		"nativeStopSound":   engine.StopSound,
-		"nativeLibrary":     store.Library,
-		"nativeCreateBoard": store.CreateBoard,
+		"nativeStopSound":       engine.StopSound,
+		"nativeLibrary":         store.Library,
+		"nativeCreateBoard":     store.CreateBoard,
+		"nativeSaveBoardLayout": store.SaveBoardLayout,
 		"nativeRemoveBoard": func(id string) (BoardRemoval, error) {
 			old, err := store.Library()
 			if err != nil {
