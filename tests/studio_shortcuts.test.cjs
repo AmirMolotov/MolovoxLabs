@@ -1,0 +1,15 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+function shortcuts(){const h={clipKeys:s=>s.Hotkeys??(s.Hotkey?[s.Hotkey]:[]),clipMIDIs:s=>s.MIDIs??(s.MIDI?[s.MIDI]:[]),filterTitle:f=>f.Name||f.Kind};vm.createContext(h);vm.runInContext(fs.readFileSync('dist/studio-shortcuts.js','utf8'),h);return h;}
+test('cards display actual alternate keyboard and MIDI assignments including legacy bindings',()=>{
+ const h=shortcuts();assert.equal(h.shortcutSummary({Hotkeys:[{Label:'Ctrl+Alt+1'},{Label:'Shift+F2'}],MIDIs:[{Kind:'note',Number:36,Channel:2}]}),'Ctrl+Alt+1 · Shift+F2 · MIDI Note 36 · Ch 2');assert.equal(h.shortcutSummary({Hotkey:{Key:112,Modifiers:2},MIDI:{Kind:'cc',Number:64,Channel:1}}),'Ctrl+F1 · MIDI CC 64 · Ch 1');assert.equal(h.shortcutSummary({}),'');
+});
+test('shortcut inventory includes every board, effect, filter group and chain target',()=>{
+ const h=shortcuts(),key={Label:'Ctrl+A'},midi={Kind:'note',Number:40,Channel:1};const sections=h.collectShortcutSections([{ID:'b',Name:'Sounds',Sounds:[{ID:'a',Name:'A',Hotkeys:[key]},{ID:'empty',Name:'Empty'}]},{ID:'v',Name:'Videos',Kind:'video',Sounds:[{ID:'vid',Name:'Video',MIDIs:[midi]}]}],[{ID:'fx',Name:'Echo',Hotkeys:[key]}],[{ID:'g',Name:'Voice',MIDIs:[midi]}],[key],[midi]);
+ assert.equal(sections.length,5);assert.deepEqual(Array.from(sections.flatMap(s=>s.rows.map(r=>r.id))),['a','vid','@filter:fx','@group:g','@all']);assert.equal(sections[0].board.ID,'b');assert.equal(sections[1].board.Kind,'video');
+});
+test('sound and video card renderers have no Arrangement action and show shortcut labels',()=>{for(const file of ['dist/studio.js','dist/studio-sampler.js']){const s=fs.readFileSync(file,'utf8');assert.doesNotMatch(s,/bindArrangementPad\(/);assert.match(s,/shortcutSummary\(sound\)/);}});
+test('Shortcuts view renders every assignment and edits the original target',async()=>{
+ const h=shortcuts(),elements=new Map();class Element{constructor(){this.children=[];this.value='';this.checked=true;}append(...items){this.children.push(...items);}replaceChildren(){this.children=[];}setAttribute(k,v){this[k]=v;}}
+ h.$=id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id);};h.document={createElement:()=>new Element()};h.library={Boards:[{ID:'b',Name:'Main',Sounds:[{ID:'sound',Name:'Alert',Hotkeys:[{Label:'Ctrl+1'}]}]}]};h.micFilters=[{ID:'echo',Name:'Echo',MIDIs:[{Kind:'cc',Number:7,Channel:1}]}];h.filterGroups=[];h.allFilterHotkeys=[];h.allFilterMIDIs=[];h.$('boardSelect').value='b';let edited;h.openTriggerEditor=async id=>edited=id;
+ h.renderShortcuts();assert.equal(h.$('shortcutList').children.length,2);const sound=h.$('shortcutList').children[0].children.at(-1);assert.equal(sound.children[1].children[0].textContent,'Ctrl+1');await sound.children[2].onclick();assert.equal(edited,'sound');const effect=h.$('shortcutList').children[1].children.at(-1);await effect.children[2].onclick();assert.equal(edited,'@filter:echo');assert.ok(h.$('workspaceShortcutList').children.length>0);
+});

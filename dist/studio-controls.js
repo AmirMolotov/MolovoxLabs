@@ -10,7 +10,7 @@ function renderFilters(){
   const label=document.createElement('label');label.className='toggle';const enabled=document.createElement('input');enabled.type='checkbox';enabled.checked=filter.Enabled;
   enabled.onchange=()=>{filter.Enabled=enabled.checked;configure();};label.append(enabled,document.createTextNode((index+1)+'. '+filterTitle(filter)));
   const actions=document.createElement('div');actions.className='filter-actions';
-  const shortcut=document.createElement('button');shortcut.className='secondary';shortcut.textContent='⌨ Shortcuts';shortcut.onclick=()=>openTriggerEditor('@filter:'+filter.ID);actions.append(shortcut);
+  const shortcut=document.createElement('button');shortcut.className='secondary';shortcut.textContent=shortcutSummary(filter)||'⌨ Shortcuts';shortcut.onclick=()=>openTriggerEditor('@filter:'+filter.ID);actions.append(shortcut);
   for(const [text,delta] of [['↑',-1],['↓',1]]){const button=document.createElement('button');button.className='secondary filter-move '+(delta<0?'move-up':'move-down');button.textContent=text;button.setAttribute('aria-label','Move '+filterTitle(filter)+' '+(delta<0?'up':'down'));button.disabled=index+delta<0||index+delta>=micFilters.length;button.onclick=()=>{[micFilters[index],micFilters[index+delta]]=[micFilters[index+delta],micFilters[index]];renderFilters();renderGroups();configure();};actions.append(button);}
   const remove=document.createElement('button');remove.className='secondary icon-close';remove.textContent='×';remove.setAttribute('aria-label','Remove '+filterTitle(filter));remove.onclick=()=>{micFilters.splice(index,1);for(const group of filterGroups)group.FilterIDs=group.FilterIDs.filter(id=>id!==filter.ID);renderFilters();renderGroups();configure();};actions.append(remove);top.append(label,actions);card.append(top);
   const controls=renderEffectParameters(filter);
@@ -103,7 +103,7 @@ function renderTriggerEditor(){
 async function commitTarget(keys,midis){
  if(committing||!editorID)return;committing=true;
  try{
-  const result=await nativeSetTriggerTarget(editorID,keys,midis);library=result.Library;preferences=result.Preferences;loadFilterModels(preferences);renderPads();renderSamplerBoard();renderTriggerEditor();$('triggerStatus').textContent='Saved. All assigned triggers remain active.';
+  const result=await nativeSetTriggerTarget(editorID,keys,midis);library=result.Library;preferences=result.Preferences;loadFilterModels(preferences);renderPads();renderSamplerBoard();renderTriggerEditor();if(typeof renderShortcuts==='function')renderShortcuts();$('triggerStatus').textContent='Saved. All assigned triggers remain active.';
  }catch(e){$('triggerStatus').textContent=errorText(e);}
  finally{committing=false;}
 }

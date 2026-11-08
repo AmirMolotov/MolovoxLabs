@@ -13,6 +13,7 @@ function openTab(name){
  if(name!=='patch'&&typeof patchFocusView!=='undefined'&&patchFocusView)togglePatchFocus(false);
  if(currentTab!==name&&typeof stopTrimLoop==='function')stopTrimLoop();currentTab=name;
  for(const tab of document.querySelectorAll('[data-tab]')){const on=tab.dataset.tab===name;tab.setAttribute('aria-selected',String(on));tab.tabIndex=on?0:-1;$(tab.getAttribute('aria-controls')).hidden=!on;}
+ if(name==='shortcuts'&&typeof renderShortcuts==='function')renderShortcuts();
  if(active)poll();else idle();if(name==='patch'){renderPatch();togglePatchFocus(true);}if(name==='sampler'||name==='recording')refreshSamplerRecordOutputs();if(name==='arrange'&&typeof renderArrangement==='function')renderArrangement();
 }
 document.querySelectorAll('[data-tab]').forEach(tab=>{
@@ -150,8 +151,8 @@ function renderPads(){
   for(let i=0;i<40;i++){const bar=document.createElementNS(svg.namespaceURI,'rect'),height=Math.max(2,(peaks[i]||0)*30);bar.setAttribute('x',String(i*6));bar.setAttribute('y',String(18-height/2));bar.setAttribute('width','3');bar.setAttribute('height',String(height));bar.setAttribute('rx','1.5');bar.setAttribute('fill','url(#'+gradientID+')');svg.append(bar);}
   play.append(playIcon,title,svg);pad.append(play);
   const bottom=document.createElement('div');bottom.className='sound-pad-bottom';const edit=document.createElement('button');edit.className='pad-edit';const keys=clipKeys(sound),midis=clipMIDIs(sound);
-  edit.textContent=keys.length||midis.length?'⌨ '+keys.length+' · MIDI '+midis.length:'⌨ Add triggers';edit.setAttribute('aria-label','Edit triggers for '+sound.Name);edit.onclick=()=>openTriggerEditor(sound.ID);
-  const time=document.createElement('span');time.className='clip-time';time.textContent=sound.Seconds.toFixed(1)+'s';const trim=document.createElement('button');trim.className='pad-edit pad-trim';trim.textContent='✂ Trim';trim.setAttribute('aria-label','Trim '+sound.Name);trim.onclick=()=>openAudioTrimmer(sound);const effects=document.createElement('button');effects.className='pad-edit';effects.textContent='Effects';effects.setAttribute('aria-label','Effects for '+sound.Name);effects.onclick=()=>openClipEffects(sound.ID);bottom.append(edit,trim,effects,time);if(typeof bindArrangementPad==='function')bindArrangementPad(bottom,sound);pad.append(bottom);
+  edit.textContent=keys.length||midis.length?shortcutSummary(sound):'⌨ Add shortcuts';edit.title=edit.textContent;edit.setAttribute('aria-label','Edit triggers for '+sound.Name);edit.onclick=()=>openTriggerEditor(sound.ID);
+  const time=document.createElement('span');time.className='clip-time';time.textContent=sound.Seconds.toFixed(1)+'s';const trim=document.createElement('button');trim.className='pad-edit pad-trim';trim.textContent='✂ Trim';trim.setAttribute('aria-label','Trim '+sound.Name);trim.onclick=()=>openAudioTrimmer(sound);const effects=document.createElement('button');effects.className='pad-edit';effects.textContent='Effects';effects.setAttribute('aria-label','Effects for '+sound.Name);effects.onclick=()=>openClipEffects(sound.ID);bottom.append(edit,trim,effects,time);pad.append(bottom);
   play.onclick=async()=>{if(playingSounds.has(sound.ID)){await nativeStopSound(sound.ID);return;}if(!active&&!await start())return;play.disabled=true;try{await withLoading('Loading sound…',()=>nativePlaySound(sound.ID));$('boardStatus').textContent='Playing '+sound.Name+'.';}catch(e){message(errorText(e));}finally{play.disabled=false;}};
   padViews.set(sound.ID,{pad,fill,playIcon,time,stops:[stop1,stop2],sound});$('soundPads').append(pad);
  }

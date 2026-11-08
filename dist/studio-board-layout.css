@@ -26,3 +26,12 @@
 .pad-group-rename{padding:4px 8px;border:0;background:transparent;color:#aec3b2;font-size:18px}
 #board .sound-pad-top{gap:5px;height:30px;padding-right:22px;box-sizing:border-box}
 #board .sound-pad-top .clip-kind{flex-shrink:0;font-size:8px;letter-spacing:1px}
+#board .sound-pad-top{padding-right:32px;gap:7px}
+#board .sound-pad-top .pad-group-select{margin:0 12px 0 auto;border:1px solid #526c57;border-radius:999px;min-height:30px;height:30px;min-width:75px;max-width:160px;width:auto;padding:4px 30px 4px 12px;background-color:#24372a;background-position:right 10px center;background-size:12px;font-size:11px;color:#d8e8d7}
+#board .sound-pad-bottom{flex-wrap:wrap;gap:8px}
+#board .sound-pad-bottom .pad-edit:first-child,.sampler-pad-footer .pad-edit:first-child{white-space:normal;overflow-wrap:anywhere;line-height:1.6;text-align:left;max-width:100%}
+.shortcut-section h2{font-size:17px}.shortcut-row{display:grid;grid-template-columns:minmax(140px,1fr) minmax(140px,2fr) auto;gap:18px;align-items:center;padding:15px 0;border-top:1px solid #ffffff12;font-size:13px}
+.shortcut-row>strong{overflow-wrap:anywhere;font-weight:550}.shortcut-badges{display:flex;gap:8px;flex-wrap:wrap}.shortcut-badges span{background:#c4ed9e0c;border:1px solid #c4ed9e30;color:#d3eac8;border-radius:7px;padding:5px 9px;font-size:12px}
+.workspace-shortcut{grid-template-columns:minmax(160px,1fr) 3fr;color:#a3b8a8;line-height:1.7}.workspace-shortcut strong{color:#d6e5d8}.workspace-keys summary{cursor:pointer}.workspace-keys #workspaceShortcutList{margin-top:16px}
+#board.media-drop-target::after{content:'Drop audio or video to make sound bites';position:fixed;inset:190px 35px 60px 245px;z-index:901;display:grid;place-items:center;pointer-events:none;border:2px dashed #c4ed9e;border-radius:20px;background:#112017e8;color:#edf8e8;font-size:24px;text-align:center;padding:20px}
+@media(max-width:700px){.shortcut-row{grid-template-columns:1fr auto}.shortcut-badges{grid-column:1 / -1;grid-row:2}.workspace-shortcut{grid-template-columns:1fr}.toolbar-actions{flex-wrap:wrap}#board.media-drop-target::after{inset:120px 15px 40px}}

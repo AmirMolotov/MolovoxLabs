@@ -41,6 +41,10 @@ func (h *samplerHTTP) handler(fallback http.Handler) http.Handler {
 			http.Error(w, "Different-origin requests are not allowed", http.StatusForbidden)
 			return
 		}
+		if path == "sampler/audio-import" && r.Method == http.MethodPost {
+			h.importTrimUpload(w, r)
+			return
+		}
 		if strings.HasPrefix(path, "sampler/arrangement/") {
 			parts := strings.Split(strings.TrimPrefix(path, "sampler/arrangement/"), "/")
 			if r.Method == http.MethodGet && len(parts) == 2 {

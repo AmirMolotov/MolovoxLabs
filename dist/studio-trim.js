@@ -1,4 +1,5 @@
 'use strict';
+let audioTrimSaving=false;
 let videoTrim=null,audioTrim=null,audioTrimBuffer=null,audioTrimBoard='',audioTrimLoad=0,audioTrimPreviewRange=null,audioTrimSource=null;
 function initTrimEditors(){
  videoTrim=new TrimTimeline($('videoTrim'),{label:'Video trim',video:true,play:time=>playTrimFrom('video',time),hover:time=>previewHoverFrame(time),change:(start,end)=>{if(typeof trimLoopMode!=='undefined'&&trimLoopMode==='video')stopTrimLoop();$('samplerIn').value=start.toFixed(2);$('samplerOut').value=end.toFixed(2);},seek:time=>{if(typeof stopTrimLoop==='function')stopTrimLoop();$('samplerEditorVideo').pause();$('samplerEditorVideo').currentTime=time;}});
@@ -8,13 +9,48 @@ function initTrimEditors(){
  audioTrim=new TrimTimeline($('audioTrim'),{label:'Audio trim',play:time=>playTrimFrom('audio',time),change:()=>{stopAudioTrimPreview();},seek:time=>{audioTrim.playhead(time);}});
  $('openAudioTrim').onclick=()=>openAudioTrimmer();$('closeAudioTrim').onclick=closeAudioTrimmer;
  $('audioTrimDialog').addEventListener('cancel',()=>{audioTrimLoad++;audioTrimPreviewRange=null;nativeStopSound('@audio-preview').catch(()=>{});});
- $('audioTrimFile').onclick=async()=>{try{const source=await withLoading('Preparing audio / video for trimming…',()=>nativeImportAudioMedia(),true);if(!source?.ID)return;audioTrimLoad++;audioTrimSource=source;audioTrimBuffer=null;stopAudioTrimPreview();audioTrim.set(source.Seconds,0,Math.min(source.Seconds,10));audioTrim.media(source);$('audioTrimName').value=(source.Name+' bite').slice(0,80);$('audioTrimSave').disabled=$('audioTrimPreview').disabled=false;$('audioTrimStatus').textContent=samplerSeconds(source.Seconds)+' source · wheel to zoom, Ctrl + wheel to move sideways.';}catch(e){$('audioTrimStatus').textContent=errorText(e);}};
+ $('audioTrimFile').onclick=async()=>{const generation=++audioTrimLoad;try{const source=await withLoading('Preparing audio / video for trimming…',()=>nativeImportAudioMedia(),true);if(source?.ID&&generation===audioTrimLoad)applyAudioTrimSource(source);}catch(e){if(generation===audioTrimLoad)$('audioTrimStatus').textContent=errorText(e);}};
  $('audioTrimPreview').onclick=async()=>{stopTrimLoop();try{if(!audioTrimBuffer&&!audioTrimSource)return;if(audioTrim.end-audioTrim.start>120)throw new Error('Trim the preview to 2 minutes or less.');if(!active&&!await start())return;await sendTrimPreview(await audioSelectionWAV(),audioTrimBoard);audioTrimPreviewRange={start:audioTrim.start,end:audioTrim.end,seen:false};audioTrim.playhead(audioTrim.start);$('audioTrimStatus').textContent='Playing your selection through the selected outputs.';}catch(e){$('audioTrimStatus').textContent=errorText(e);}};
  $('audioTrimStop').onclick=()=>stopAudioTrimPreview();
- $('audioTrimSave').onclick=async()=>{try{if(!audioTrimBuffer&&!audioTrimSource)return;if(audioTrim.end-audioTrim.start>120)throw new Error('Trim your sound bite to 2 minutes or less.');await withLoading('Saving sound bite…',async()=>{const name=$('audioTrimName').value.trim();if(!name)throw new Error('Name your sound bite.');const response=await fetch(new URL('sampler/bite',location.href),{method:'POST',headers:{'Content-Type':'audio/wav','X-Bite-Board':audioTrimBoard,'X-Bite-Name':btoa(String.fromCharCode(...new TextEncoder().encode(name)))},body:await audioSelectionWAV()});if(!response.ok)throw new Error(await response.text());library=await response.json();renderLibrary(audioTrimBoard);closeAudioTrimmer();$('boardStatus').textContent='Sound bite added. The source audio is unchanged.';},true);}catch(e){$('audioTrimStatus').textContent=errorText(e);}};
+ $('audioTrimSave').onclick=saveAudioTrimBite;
 }
+function applyAudioTrimSource(source){
+ audioTrimSource=source;audioTrimBuffer=null;stopAudioTrimPreview();audioTrim.set(source.Seconds,0,Math.min(source.Seconds,10));audioTrim.media(source);$('audioTrimName').value=(source.Name+' bite').slice(0,80);$('audioTrimSave').disabled=audioTrimSaving;$('audioTrimPreview').disabled=false;$('audioTrimStatus').textContent=samplerSeconds(source.Seconds)+' source · save a bite, then keep selecting from this track.';
+}
+function nextSoundBiteName(name){const match=name.match(/^(.*?)(?: (\d+))?$/);const suffix=' '+(match[2]?Number(match[2])+1:2);return match[1].slice(0,80-suffix.length)+suffix;}
+async function saveAudioTrimBite(){
+ if(audioTrimSaving||(!audioTrimBuffer&&!audioTrimSource))return;
+ const generation=audioTrimLoad,board=audioTrimBoard,name=$('audioTrimName').value.trim();
+ try{
+  if(!name)throw new Error('Name your sound bite.');if(audioTrim.end-audioTrim.start>120)throw new Error('Trim your sound bite to 2 minutes or less.');
+  audioTrimSaving=true;$('audioTrimSave').disabled=true;
+  await withLoading('Saving sound bite…',async()=>{
+   const response=await fetch(new URL('sampler/bite',location.href),{method:'POST',headers:{'Content-Type':'audio/wav','X-Bite-Board':board,'X-Bite-Name':btoa(String.fromCharCode(...new TextEncoder().encode(name)))},body:await audioSelectionWAV()});
+   if(!response.ok)throw new Error(await response.text());library=await response.json();renderLibrary(board);$('boardStatus').textContent='Added '+name+'.';
+   if(generation===audioTrimLoad){$('audioTrimStatus').textContent='Saved “'+name+'” to your board. Select another part of this track to make the next bite.';$('audioTrimName').value=nextSoundBiteName(name);$('audioTrimSave').textContent='＋ Save next bite';}
+  },true);
+ }catch(e){if(generation===audioTrimLoad)$('audioTrimStatus').textContent=errorText(e);}
+ finally{audioTrimSaving=false;if(audioTrimSource||audioTrimBuffer)$('audioTrimSave').disabled=false;}
+}
+function isTrimMediaFile(file){return /\.(wav|mp3|flac|ogg|opus|aac|m4a|aiff|aif|wma|mp4|mkv|webm|mov|avi|m4v|mpeg|mpg|ts|m2ts|wmv|flv)$/i.test(file.name);}
+async function openDroppedAudioTrim(file){
+ if(!isTrimMediaFile(file))throw new Error('Drop an audio or video file.');if(file.size>8*1024*1024*1024)throw new Error('Choose a file up to 8 GB.');
+ if(!$('audioTrimDialog').open)await openAudioTrimmer();
+ const generation=++audioTrimLoad;stopAudioTrimPreview();$('audioTrimStatus').textContent='Importing '+file.name+'…';$('audioTrimSave').disabled=$('audioTrimPreview').disabled=true;
+ try{const source=await withLoading('Preparing '+file.name+'…',async()=>{const response=await fetch(new URL('sampler/audio-import?name='+encodeURIComponent(file.name),location.href),{method:'POST',body:file});if(!response.ok)throw new Error(await response.text());return response.json();},true);if(generation===audioTrimLoad)applyAudioTrimSource(source);}
+ catch(e){if(generation===audioTrimLoad){$('audioTrimStatus').textContent=errorText(e);$('audioTrimSave').disabled=$('audioTrimPreview').disabled=!(audioTrimSource||audioTrimBuffer);}throw e;}
+}
+function isBoardFileDrag(e){return currentTab==='board'&&Array.from(e.dataTransfer?.types||[]).includes('Files')&&!document.querySelector('dialog[open]:not(#audioTrimDialog)');}
+document.addEventListener('dragover',e=>{if(!isBoardFileDrag(e))return;e.preventDefault();e.dataTransfer.dropEffect='copy';$('board').classList.add('media-drop-target');},true);
+document.addEventListener('dragleave',e=>{if(!e.relatedTarget)$('board').classList.remove('media-drop-target');},true);
+document.addEventListener('drop',e=>{
+ $('board').classList.remove('media-drop-target');if(!isBoardFileDrag(e))return;e.preventDefault();e.stopPropagation();
+ const files=Array.from(e.dataTransfer.files||[]);if(files.length!==1){message('Drop one audio or video file at a time to trim it.');return;}
+ openDroppedAudioTrim(files[0]).catch(e=>message(errorText(e)));
+},true);
+window.addEventListener('dragend',()=>$('board').classList.remove('media-drop-target'));
 async function sendTrimPreview(wav,board){await postTrimPreview('@audio-preview',wav,board);}
-async function openAudioTrimmer(sound){stopTrimLoop();const generation=++audioTrimLoad;audioTrimPreviewRange=null;audioTrimBoard=$('boardSelect').value;audioTrimSource=null;audioTrimBuffer=null;audioTrim.set(0);$('audioTrimName').value='';$('audioTrimFile').value='';$('audioTrimSave').disabled=$('audioTrimPreview').disabled=true;$('audioTrimStatus').textContent='Choose audio or video, then drag IN and OUT to extract a sound bite. The source stays unchanged.';$('audioTrimDialog').showModal();if(sound)try{const response=await fetch(samplerURL('clip',sound.ID));if(!response.ok)throw new Error('Could not open this clip.');const bytes=await response.arrayBuffer();if(generation!==audioTrimLoad)return;await loadAudioTrim(bytes,sound.Name);}catch(e){$('audioTrimStatus').textContent=errorText(e);}}
+async function openAudioTrimmer(sound){stopTrimLoop();const generation=++audioTrimLoad;audioTrimPreviewRange=null;audioTrimBoard=$('boardSelect').value;audioTrimSource=null;audioTrimBuffer=null;audioTrim.set(0);$('audioTrimName').value='';$('audioTrimFile').value='';$('audioTrimSave').disabled=$('audioTrimPreview').disabled=true;$('audioTrimSave').textContent='＋ Save sound bite';$('audioTrimStatus').textContent='Choose audio or video, then drag IN and OUT to extract a sound bite. The source stays unchanged.';$('audioTrimDialog').showModal();if(sound)try{const response=await fetch(samplerURL('clip',sound.ID));if(!response.ok)throw new Error('Could not open this clip.');const bytes=await response.arrayBuffer();if(generation!==audioTrimLoad)return;await loadAudioTrim(bytes,sound.Name);}catch(e){$('audioTrimStatus').textContent=errorText(e);}}
 async function loadAudioTrim(bytes,name){const generation=++audioTrimLoad;audioTrimPreviewRange=null;audioTrimSource=null;audioTrimBuffer=null;$('audioTrimStatus').textContent='Loading audio and drawing waveform…';$('audioTrimSave').disabled=$('audioTrimPreview').disabled=true;await nativeStopSound('@audio-preview');await withLoading('Drawing audio waveform…',async()=>{const context=new OfflineAudioContext(1,1,48000);let buffer;try{buffer=await context.decodeAudioData(bytes);}catch(e){throw new Error('Could not read the audio track. Try WAV, MP3, MP4 with AAC, or WebM with Opus.');}if(generation!==audioTrimLoad)return;if(!buffer.duration||buffer.duration>1800)throw new Error('Choose audio up to 30 minutes long.');audioTrimBuffer=buffer;audioTrim.set(buffer.duration,0,Math.min(buffer.duration,10));audioTrim.waveform(buffer);$('audioTrimName').value=(name+' bite').slice(0,80);$('audioTrimSave').disabled=$('audioTrimPreview').disabled=false;$('audioTrimStatus').textContent=samplerSeconds(buffer.duration)+' source · drag either edge, or zoom in for a precise cut.';},true);}
 function closeAudioTrimmer(){audioTrimLoad++;audioTrimPreviewRange=null;nativeStopSound('@audio-preview').catch(()=>{});audioTrimSource=null;audioTrimBuffer=null;audioTrim.buffer=null;audioTrim.mediaID=null;audioTrim.waveAbort?.abort();$('audioTrimDialog').close();}
 function previewHoverFrame(time){const video=$('samplerEditorVideo');if(video.paused===false){videoTrim.hoverPopup.hidden=true;return;}if(!samplerSource||video.readyState<2)return;video.pause();video.currentTime=Math.min(time,Math.max(0,samplerDuration-.001));videoTrim.playhead(time);if(!video.seeking)renderHoverFrame();}
