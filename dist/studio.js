@@ -7,6 +7,7 @@ let micFilters=[],filterGroups=[],allFilterHotkeys=[],allFilterMIDIs=[],bypassFi
 let wantListening=false,routeApplying=false,routeDirty=false,routeTimer=null;
 let padViews=new Map(),playingSounds=new Map();
 function openTab(name){
+ if(name!==currentTab&&typeof cancelPatchSelection==='function')cancelPatchSelection();
  if(name!==currentTab&&typeof clearBoardSearch==='function')clearBoardSearch();
  if(name!=='arrange'&&typeof toggleArrangementFocus==='function')toggleArrangementFocus(false);
  if(name!=='arrange'&&typeof stopArrangementMediaPreview==='function')stopArrangementMediaPreview();

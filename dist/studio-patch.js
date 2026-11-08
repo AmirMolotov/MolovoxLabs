@@ -169,6 +169,7 @@ function renderPatch(){
   if(node.Kind==='effect'||node.Kind==='output')port('in');if(node.Kind!=='output')port('out');nodes.append(card);patchResize?.observe(card);
  }
  if(typeof renderPatchGroups==='function')renderPatchGroups();
+ if(typeof refreshPatchSelectionUI==='function')refreshPatchSelectionUI();
  sizePatchStage();drawPatchCables();patchStatus();
 }
 window.addEventListener('pointermove',e=>{
@@ -203,7 +204,7 @@ function applyPatchCamera(){
 }
 function patchWheel(event){
  if(!event.deltaY||event.target?.closest?.('.patch-vst-params'))return;
- event.preventDefault();if(patchDragging||patchPan)return;
+ event.preventDefault();if(patchDragging||patchPan||(typeof patchMarquee!=='undefined'&&patchMarquee))return;
  const viewport=$('patchViewport'),stage=$('patchStage');
  if(event.ctrlKey){patchCameraX-=event.deltaY*2;}
  else{
@@ -216,9 +217,11 @@ function patchWheel(event){
  if(patchPending){const rect=stage.getBoundingClientRect();patchPointer={x:(event.clientX-rect.left)/patchZoom,y:(event.clientY-rect.top)/patchZoom};drawPatchCables();}
 }
 $('patchViewport').addEventListener?.('wheel',patchWheel,{passive:false});
-$('patchStage').oncontextmenu=e=>{e.preventDefault();e.stopPropagation();cancelPatchInteraction();};
+const patchContextMenu=e=>{e.preventDefault();e.stopPropagation();if(typeof openPatchSelectionMenu==='function'&&openPatchSelectionMenu(e))return;cancelPatchInteraction();endPatchPan();};
+$('patchStage').oncontextmenu=patchContextMenu;$('patchViewport').oncontextmenu=patchContextMenu;
 document.addEventListener('keydown',e=>{
  if(e.key!=='Escape'||document.querySelector('dialog[open]'))return;
+ if(typeof cancelPatchSelection==='function'&&cancelPatchSelection()){e.preventDefault();e.stopImmediatePropagation();return;}
  if(patchPending||patchDragging||patchPan){e.preventDefault();e.stopImmediatePropagation();cancelPatchInteraction();endPatchPan();}
  else if(patchFocusView){e.preventDefault();e.stopImmediatePropagation();togglePatchFocus(false);}
 },true);
@@ -241,7 +244,8 @@ document.addEventListener('keyup',e=>{if(e.code==='Space'&&patchSpace){if(patchS
 window.addEventListener('blur',()=>{if(patchSpace)setPatchSpace(false);endPatchPan();});
 $('patchViewport').addEventListener?.('pointerdown',e=>{
  const background=e.target===$('patchViewport')||e.target===$('patchStage')||e.target===$('patchWires');
- if((!patchSpace&&!background)||e.button!==0||patchDragging||patchPan)return;
+ if(e.button!==0||patchDragging||patchPan)return;
+ if(!patchSpace){if(background&&typeof beginPatchSelection==='function'){e.preventDefault();e.stopPropagation();if(patchPending)cancelPatchInteraction();beginPatchSelection(e);}return;}
  e.preventDefault();e.stopPropagation();patchSpaceUsed=true;
  if(patchPending)cancelPatchInteraction();
  const viewport=e.currentTarget;

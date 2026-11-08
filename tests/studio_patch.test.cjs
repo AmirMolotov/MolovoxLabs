@@ -149,22 +149,16 @@ test('full-screen patch view fits nodes and restores view, focus and background 
  assert.ok(restored&&focused&&signalsRestored);
  assert.equal(h.$('patchFocus').textContent,'Full screen');
 });
-test('dragging the patch background pans without needing Space',()=>{
- const h=harness(),viewport=h.$('patchViewport');
- let captured=false;
- Object.assign(viewport,{scrollLeft:150,scrollTop:60,classList:{add(){},remove(){}},
-  setPointerCapture(){captured=true;},hasPointerCapture(){return captured;},releasePointerCapture(){captured=false;}});
+test('pressing empty space starts selection while Space-drag remains reserved for panning',()=>{
+ const h=harness(),viewport=h.$('patchViewport');let selected=false;
+ h.beginPatchSelection=()=>selected=true;
  viewport.listeners.pointerdown({button:0,pointerId:8,target:h.$('patchStage'),currentTarget:viewport,clientX:100,clientY:100,preventDefault(){},stopPropagation(){}});
- h.window.listeners.pointermove({pointerId:8,clientX:60,clientY:90});
- assert.equal(vm.runInContext("patchCameraX",h),-40);
- assert.equal(vm.runInContext("patchCameraY",h),-10);
- assert.equal(h.configured,0);
- h.window.listeners.pointerup({button:0,pointerId:8});
- assert.equal(captured,false);
+ assert.equal(selected,true);assert.equal(vm.runInContext('patchPan',h),null);assert.equal(vm.runInContext('patchCameraX',h),0);assert.equal(h.configured,0);
 });
 
 test('camera can pan through zero and far beyond either edge without moving graph nodes',()=>{
  const h=harness(),viewport=h.$('patchViewport'),before=h.patchOptions();
+ vm.runInContext('patchSpace=true',h);
  Object.assign(viewport,{classList:{add(){},remove(){}},setPointerCapture(){},hasPointerCapture(){return false;}});
  viewport.listeners.pointerdown({button:0,pointerId:9,target:h.$('patchStage'),currentTarget:viewport,clientX:0,clientY:0,preventDefault(){},stopPropagation(){}});
  for(const position of [-100000,100000,-250000]){
