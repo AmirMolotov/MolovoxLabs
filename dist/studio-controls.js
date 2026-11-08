@@ -156,12 +156,12 @@ async function pollTriggers(){
 }
 // Keep the menu open while using its controls, dismiss it elsewhere.
 document.addEventListener('click',event=>{
- for(const menu of document.querySelectorAll('.board-menu[open]')){
+ for(const menu of document.querySelectorAll('.board-menu[open],.sound-pad-menu[open]')){
   if(!menu.contains(event.target))menu.open=false;
  }
 });
 document.addEventListener('keydown',event=>{
- if(event.key==='Escape')for(const menu of document.querySelectorAll('.board-menu[open]'))menu.open=false;
+ if(event.key==='Escape')for(const menu of document.querySelectorAll('.board-menu[open],.sound-pad-menu[open]'))menu.open=false;
 });
 setInterval(pollTriggers,200);
 init();

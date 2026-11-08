@@ -27,7 +27,7 @@ function selections(){return {
  Outputs:[...document.querySelectorAll('#outputs input:checked')].map(el=>el.value)
 };}
 function options(){return {Patch:patchOptions(),Volume:Number($('master').value)/100,BoardVolume:Number($('boardVolume').value)/100,Enabled:false,MonitorMic:$('monitorMic').checked,Inverted:false,DelayMS:0,Filter:false,Filters:micFilters,BypassFilters:bypassFilters,InputGains:Object.fromEntries(selections().Inputs.map(x=>[x.ID,x.Gain]))};}
-function snapshotPreferences(){return {SamplerRecordingMode:$('samplerRecordingMode').value,SamplerBoardID:$('samplerBoard').value,VSTFolders:vstFolders(),Saved:true,AutoListen:$('autoListen').checked,BoardID:$('boardSelect').value,GlobalKeys:$('globalKeys').checked,MIDIInput:$('midiInput').value,...selections(),Options:options(),FilterGroups:filterGroups,AllFilterHotkeys:allFilterHotkeys,AllFilterMIDIs:allFilterMIDIs};}
+function snapshotPreferences(){return {SoundboardView:typeof soundboardView==='string'?soundboardView:'standard',SamplerRecordingMode:$('samplerRecordingMode').value,SamplerBoardID:$('samplerBoard').value,VSTFolders:vstFolders(),Saved:true,AutoListen:$('autoListen').checked,BoardID:$('boardSelect').value,GlobalKeys:$('globalKeys').checked,MIDIInput:$('midiInput').value,...selections(),Options:options(),FilterGroups:filterGroups,AllFilterHotkeys:allFilterHotkeys,AllFilterMIDIs:allFilterMIDIs};}
 async function save(){
  if(!ready)return false;
  clearTimeout(saveTimer);
@@ -143,7 +143,7 @@ function renderPads(){
   const top=document.createElement('div');top.className='sound-pad-top';const kind=document.createElement('span');kind.className='clip-kind';kind.textContent=(sound.File?.split('.').pop()||'audio').toUpperCase();
   const remove=document.createElement('button');remove.className='pad-remove';remove.textContent='×';remove.setAttribute('aria-label','Remove '+sound.Name);
   remove.onclick=async()=>{try{await nativeStopSound(sound.ID);library=await nativeRemoveSound(sound.ID);renderLibrary($('boardSelect').value);await configure();$('boardStatus').textContent='Sound removed.';}catch(e){message(errorText(e));}};top.append(kind,remove);pad.append(top);
-  const play=document.createElement('button');play.className='sound-pad-play';play.setAttribute('aria-label','Play or stop '+sound.Name);
+  const play=document.createElement('button');play.className='sound-pad-play';play.title=sound.Name;play.setAttribute('aria-label','Play or stop '+sound.Name);
   const playIcon=document.createElement('span');playIcon.className='play-icon';playIcon.textContent='▶';const title=document.createElement('strong');title.textContent=sound.Name;
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 240 36');svg.classList.add('pad-wave');svg.setAttribute('aria-hidden','true');
   const defs=document.createElementNS(svg.namespaceURI,'defs'),gradient=document.createElementNS(svg.namespaceURI,'linearGradient'),gradientID='clip-gradient-'+sound.ID;gradient.id=gradientID;gradient.setAttribute('gradientUnits','userSpaceOnUse');gradient.setAttribute('x1','0');gradient.setAttribute('x2','240');gradient.setAttribute('y1','0');gradient.setAttribute('y2','0');
@@ -153,11 +153,12 @@ function renderPads(){
   play.append(playIcon,title,svg);pad.append(play);
   const bottom=document.createElement('div');bottom.className='sound-pad-bottom';const edit=document.createElement('button');edit.className='pad-edit';const keys=clipKeys(sound),midis=clipMIDIs(sound);
   edit.textContent=keys.length||midis.length?shortcutSummary(sound):'⌨ Add shortcuts';edit.title=edit.textContent;edit.setAttribute('aria-label','Edit triggers for '+sound.Name);edit.onclick=()=>openTriggerEditor(sound.ID);
-  const time=document.createElement('span');time.className='clip-time';time.textContent=sound.Seconds.toFixed(1)+'s';const trim=document.createElement('button');trim.className='pad-edit pad-trim';trim.textContent='✂ Trim';trim.setAttribute('aria-label','Trim '+sound.Name);trim.onclick=()=>openAudioTrimmer(sound);const effects=document.createElement('button');effects.className='pad-edit';effects.textContent='Effects';effects.setAttribute('aria-label','Effects for '+sound.Name);effects.onclick=()=>openClipEffects(sound.ID);bottom.append(edit,trim,effects,time);pad.append(bottom);
+  const time=document.createElement('span');time.className='clip-time';time.textContent=sound.Seconds.toFixed(1)+'s';const trim=document.createElement('button');trim.className='pad-edit pad-trim';trim.textContent='✂ Trim';trim.setAttribute('aria-label','Trim '+sound.Name);trim.onclick=()=>openAudioTrimmer(sound);const effects=document.createElement('button');effects.className='pad-edit pad-effects';effects.textContent='Effects';effects.setAttribute('aria-label','Effects for '+sound.Name);effects.onclick=()=>openClipEffects(sound.ID);bottom.append(edit,trim,effects,time);pad.append(bottom);
   play.onclick=async()=>{if(playingSounds.has(sound.ID)){await nativeStopSound(sound.ID);return;}if(!active&&!await start())return;play.disabled=true;try{await withLoading('Loading sound…',()=>nativePlaySound(sound.ID));$('boardStatus').textContent='Playing '+sound.Name+'.';}catch(e){message(errorText(e));}finally{play.disabled=false;}};
   padViews.set(sound.ID,{pad,fill,playIcon,time,stops:[stop1,stop2],sound});$('soundPads').append(pad);
  }
  if(typeof decorateSoundboard==='function')decorateSoundboard(board);
+ if(typeof syncSoundboardViewControls==='function')syncSoundboardViewControls();
  updatePlayback([...playingSounds.values()]);
 }
 function updatePlayback(items){
@@ -197,7 +198,7 @@ async function init(){
  const finishLoading=beginLoading('Opening your audio workspace…',true);
  try{
   await paintLoading();
-  preferences=await nativeLoadPreferences();await initVST(preferences);const o=preferences.Options||{};
+  preferences=await nativeLoadPreferences();initSoundboardView(preferences.SoundboardView);await initVST(preferences);const o=preferences.Options||{};
   $('master').value=Math.round((o.Volume??1)*100);$('boardVolume').value=Math.round((o.BoardVolume??1)*100);$('monitorMic').checked=!!(o.MonitorMic||o.Enabled);$('autoListen').checked=preferences.AutoListen??true;$('globalKeys').checked=preferences.GlobalKeys??true;
   loadFilterModels(preferences);await refreshMIDI(preferences.MIDIInput||'');updateLabels();
   const missing=fillDevices(await nativeDevices(),preferences);

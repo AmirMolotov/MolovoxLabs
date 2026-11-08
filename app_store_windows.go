@@ -24,6 +24,7 @@ import (
 )
 
 type Preferences struct {
+	SoundboardView       string
 	VSTFolders           []string
 	FilterGroups         []FilterGroup
 	AllFilterHotkeys     []KeyBinding
