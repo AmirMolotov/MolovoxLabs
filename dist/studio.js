@@ -26,7 +26,7 @@ function selections(){return {
  Inputs:[...document.querySelectorAll('#inputs .device')].filter(row=>row.querySelector('[type=checkbox]').checked).map(row=>({ID:row.dataset.id,Gain:Number(row.querySelector('[type=range]').value)/100})),
  Outputs:[...document.querySelectorAll('#outputs input:checked')].map(el=>el.value)
 };}
-function options(){return {Patch:patchOptions(),Volume:Number($('master').value)/100,BoardVolume:Number($('boardVolume').value)/100,Enabled:false,MonitorMic:$('monitorMic').checked,Inverted:false,DelayMS:0,Filter:false,Filters:micFilters,BypassFilters:bypassFilters,InputGains:Object.fromEntries(selections().Inputs.map(x=>[x.ID,x.Gain]))};}
+function options(){return {SoundboardDelay:$('boardDelay').checked,Patch:patchOptions(),Volume:Number($('master').value)/100,BoardVolume:Number($('boardVolume').value)/100,Enabled:false,MonitorMic:$('monitorMic').checked,Inverted:false,DelayMS:0,Filter:false,Filters:micFilters,BypassFilters:bypassFilters,InputGains:Object.fromEntries(selections().Inputs.map(x=>[x.ID,x.Gain]))};}
 function snapshotPreferences(){return {SoundboardView:typeof soundboardView==='string'?soundboardView:'standard',SamplerRecordingMode:$('samplerRecordingMode').value,SamplerBoardID:$('samplerBoard').value,VSTFolders:vstFolders(),Saved:true,AutoListen:$('autoListen').checked,BoardID:$('boardSelect').value,GlobalKeys:$('globalKeys').checked,MIDIInput:$('midiInput').value,...selections(),Options:options(),FilterGroups:filterGroups,AllFilterHotkeys:allFilterHotkeys,AllFilterMIDIs:allFilterMIDIs};}
 async function save(){
  if(!ready)return false;
@@ -45,7 +45,7 @@ function configure(parametersOnly){
  })).finally(()=>{configurePromise=null;configureRefreshPatch=false;});return configurePromise;
 }
 ['master','boardVolume'].forEach(id=>$(id).oninput=configure);
-$('monitorMic').onchange=configure;
+$('monitorMic').onchange=configure;$('boardDelay').onchange=()=>configure(true);
 $('autoListen').onchange=save;
 function wave(id,samples,color){
  const canvas=$(id);if(!canvas.clientWidth)return;
@@ -164,7 +164,7 @@ function renderPads(){
 function updatePlayback(items){
  playingSounds=new Map();
  for(const item of items){const previous=playingSounds.get(item.ID);if(!previous||item.Sequence>previous.Sequence)playingSounds.set(item.ID,item);}
- for(const [id,v] of padViews){const item=playingSounds.get(id),on=!!item,p=on?Math.max(0,Math.min(1,item.Progress)):0;v.pad.classList.toggle('is-playing',on);v.fill.style.width=(p*100)+'%';v.playIcon.textContent=on?'■':'▶';v.time.textContent=on?item.Remaining.toFixed(1)+'s left':v.sound.Seconds.toFixed(1)+'s';for(const stop of v.stops)stop.setAttribute('offset',(p*100)+'%');}
+ for(const [id,v] of padViews){const item=playingSounds.get(id),on=!!item,p=on?Math.max(0,Math.min(1,item.Progress)):0;v.pad.classList.toggle('is-playing',on);v.pad.classList.toggle('is-queued',!!item?.Queued);v.fill.style.width=(p*100)+'%';v.playIcon.textContent=item?.Queued?'…':on?'■':'▶';v.time.textContent=item?.Queued?item.DelayRemaining.toFixed(1)+'s delay':on?item.Remaining.toFixed(1)+'s left':v.sound.Seconds.toFixed(1)+'s';for(const stop of v.stops)stop.setAttribute('offset',(p*100)+'%');}
  updateSamplerPlayback(items);updateTrimPlayback(items);updateLoopPreview(items);
 }
 $('boardSelect').onchange=async()=>{renderPads();await save();};
@@ -198,7 +198,7 @@ async function init(){
  const finishLoading=beginLoading('Opening your audio workspace…',true);
  try{
   await paintLoading();
-  preferences=await nativeLoadPreferences();initSoundboardView(preferences.SoundboardView);await initVST(preferences);const o=preferences.Options||{};
+  preferences=await nativeLoadPreferences();initSoundboardView(preferences.SoundboardView);await initVST(preferences);const o=preferences.Options||{};$('boardDelay').checked=!!o.SoundboardDelay;
   $('master').value=Math.round((o.Volume??1)*100);$('boardVolume').value=Math.round((o.BoardVolume??1)*100);$('monitorMic').checked=!!(o.MonitorMic||o.Enabled);$('autoListen').checked=preferences.AutoListen??true;$('globalKeys').checked=preferences.GlobalKeys??true;
   loadFilterModels(preferences);await refreshMIDI(preferences.MIDIInput||'');updateLabels();
   const missing=fillDevices(await nativeDevices(),preferences);

@@ -58,3 +58,5 @@
 #board.compact-soundboard .sound-pad-menu .pad-edit{display:block;width:100%;padding:7px 9px;border:0;background:transparent;text-align:left;font-size:11px;line-height:1.3}
 #board.compact-soundboard .sound-pad-menu .pad-edit:hover{background:#ffffff0a}
 #board.compact-soundboard .sound-pad-menu .pad-group-select{margin:6px 0 0;width:100%;min-width:0;max-width:none;height:28px;min-height:28px;padding:4px 26px 4px 9px;border-radius:999px;background-position:right 8px center;background-size:11px;font-size:10px}
+.board-view-tools .board-delay-toggle{margin:0;font-size:11px;white-space:nowrap;color:#a8c1ac}
+.sound-pad.is-queued{border-color:#d9c589}.sound-pad.is-queued .play-icon{background:#d9c58922;color:#e4d59c}.sound-pad.is-queued .clip-time{color:#e4d59c}

@@ -20,19 +20,20 @@ const ringSize = 8192
 const scopeSize = 256
 
 type AudioOptions struct {
-	Patch         PatchBay
-	patchProgram  *patchProgram
-	filterChains  []*micFilterChain
-	BypassFilters bool
-	InputGains    map[string]float32
-	Filters       []MicFilter
-	BoardVolume   float32
-	MonitorMic    bool
-	Volume        float32
-	Enabled       bool
-	Inverted      bool
-	DelayMS       float32
-	Filter        bool
+	SoundboardDelay bool
+	Patch           PatchBay
+	patchProgram    *patchProgram
+	filterChains    []*micFilterChain
+	BypassFilters   bool
+	InputGains      map[string]float32
+	Filters         []MicFilter
+	BoardVolume     float32
+	MonitorMic      bool
+	Volume          float32
+	Enabled         bool
+	Inverted        bool
+	DelayMS         float32
+	Filter          bool
 }
 type InputSelection struct {
 	ID   string
@@ -583,13 +584,20 @@ func (e *nativeEngine) Snapshot() NativeSnapshot {
 			if published>>32 == v.Sequence {
 				position = published & 0xffffffff
 			}
+			delayRemaining := float64(0)
+			if position < uint64(v.DelayFrames) {
+				delayRemaining = float64(uint64(v.DelayFrames)-position) / sampleRate
+				position = 0
+			} else {
+				position -= uint64(v.DelayFrames)
+			}
 			if v.Loop && len(v.Samples) > 0 {
 				position %= uint64(len(v.Samples))
 			}
 			if position < uint64(len(v.Samples)) {
 				duration := float64(len(v.Samples)) / sampleRate
 				seconds := float64(position) / sampleRate
-				s.Playback = append(s.Playback, PlaybackInfo{ID: v.ID, Sequence: v.Sequence, Position: seconds, Duration: duration, Remaining: duration - seconds, Progress: seconds / duration})
+				s.Playback = append(s.Playback, PlaybackInfo{Queued: delayRemaining > 0, DelayRemaining: delayRemaining, ID: v.ID, Sequence: v.Sequence, Position: seconds, Duration: duration, Remaining: duration - seconds, Progress: seconds / duration})
 			}
 		}
 	}
@@ -678,12 +686,13 @@ func nativeMutedCaptureSmoke() map[string]interface{} {
 }
 
 type boardVoice struct {
-	Loop     bool
-	BoardID  string
-	Sequence uint64
-	ID       string
-	Samples  []float32
-	Started  time.Time
+	DelayFrames int
+	Loop        bool
+	BoardID     string
+	Sequence    uint64
+	ID          string
+	Samples     []float32
+	Started     time.Time
 }
 type boardVoices struct{ Slots [8]boardVoice }
 
@@ -701,9 +710,14 @@ func (r *renderEndpoint) boardSamples(sounds *boardVoices, clips *[8]float32) fl
 		}
 		if r.soundIDs[i] != v.Sequence {
 			r.soundIDs[i] = v.Sequence
-			r.soundAt[i] = 0
+			r.soundAt[i] = -v.DelayFrames
 		}
 		at := r.soundAt[i]
+		if at < 0 {
+			r.soundAt[i]++
+			r.published[i].Store((v.Sequence << 32) | uint64(r.soundAt[i]+v.DelayFrames))
+			continue
+		}
 		if v.Loop && len(v.Samples) > 0 && at >= len(v.Samples) {
 			at = 0
 			r.soundAt[i] = 0
@@ -718,17 +732,24 @@ func (r *renderEndpoint) boardSamples(sounds *boardVoices, clips *[8]float32) fl
 			clips[i] = value
 		}
 		r.soundAt[i]++
-		r.published[i].Store((v.Sequence << 32) | uint64(r.soundAt[i]))
+		r.published[i].Store((v.Sequence << 32) | uint64(r.soundAt[i]+v.DelayFrames))
 	}
 	return mixed
 }
 func (e *nativeEngine) PlaySound(id string, samples []float32, boardIDs ...string) error {
-	return e.playSound(id, samples, false, boardIDs...)
+	return e.playSound(id, samples, false, 0, boardIDs...)
 }
 func (e *nativeEngine) PlayPreview(id string, samples []float32, board string, loop bool) error {
-	return e.playSound(id, samples, loop, board)
+	return e.playSound(id, samples, loop, 0, board)
 }
-func (e *nativeEngine) playSound(id string, samples []float32, loop bool, boardIDs ...string) error {
+func (e *nativeEngine) PlaySoundboard(id string, samples []float32, board string) error {
+	delay := 0
+	if options := e.options.Load(); options != nil && options.SoundboardDelay {
+		delay = sampleRate / 2
+	}
+	return e.playSound(id, samples, false, delay, board)
+}
+func (e *nativeEngine) playSound(id string, samples []float32, loop bool, delay int, boardIDs ...string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if !e.running.Load() {
@@ -750,7 +771,7 @@ func (e *nativeEngine) playSound(id string, samples []float32, loop bool, boardI
 			if len(boardIDs) > 0 {
 				boardID = boardIDs[0]
 			}
-			next.Slots[i] = boardVoice{Loop: loop, BoardID: boardID, Sequence: e.soundSequence.Add(1), ID: id, Samples: samples, Started: time.Now()}
+			next.Slots[i] = boardVoice{DelayFrames: delay, Loop: loop, BoardID: boardID, Sequence: e.soundSequence.Add(1), ID: id, Samples: samples, Started: time.Now().Add(time.Duration(delay) * time.Second / sampleRate)}
 			e.voices.Store(next)
 			return nil
 		}
@@ -760,6 +781,8 @@ func (e *nativeEngine) playSound(id string, samples []float32, loop bool, boardI
 func (e *nativeEngine) StopSounds() error { e.voices.Store(nil); return nil }
 
 type PlaybackInfo struct {
+	Queued                                  bool
+	DelayRemaining                          float64
 	ID                                      string
 	Sequence                                uint64
 	Position, Duration, Remaining, Progress float64

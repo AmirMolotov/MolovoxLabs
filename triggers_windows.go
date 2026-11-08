@@ -343,7 +343,7 @@ type triggerMap struct {
 	Sounds map[string]bool
 	Media  map[string]triggerMedia
 }
-type triggerMedia struct{ BoardID, File string }
+type triggerMedia struct{ BoardID, File, Kind string }
 
 func activeTriggerLibrary(l libraryState, p Preferences) libraryState {
 	id := p.BoardID
@@ -436,7 +436,7 @@ func (t *triggerService) Configure(p Preferences) error {
 		for _, s := range b.Sounds {
 			if !strings.HasPrefix(s.ID, "@") {
 				mapping.Sounds[s.ID] = true
-				mapping.Media[s.ID] = triggerMedia{BoardID: b.ID, File: s.File}
+				mapping.Media[s.ID] = triggerMedia{BoardID: b.ID, File: s.File, Kind: b.Kind}
 			}
 			for _, m := range soundMIDIs(s) {
 				mapping.MIDI[midiKey(m)] = s.ID
@@ -495,7 +495,12 @@ func (t *triggerService) Play(id string) error {
 				}
 				t.cache[id] = samples
 			}
-			err := t.engine.PlaySound(id, samples, media.BoardID)
+			var err error
+			if media.Kind == "video" {
+				err = t.engine.PlaySound(id, samples, media.BoardID)
+			} else {
+				err = t.engine.PlaySoundboard(id, samples, media.BoardID)
+			}
 			if err == nil && t.SoundPlayed != nil {
 				t.SoundPlayed(id)
 			}
@@ -521,7 +526,12 @@ func (t *triggerService) Play(id string) error {
 	for _, board := range l.Boards {
 		for _, sound := range board.Sounds {
 			if sound.ID == id {
-				err := t.engine.PlaySound(id, samples, board.ID)
+				var err error
+				if board.Kind == "video" {
+					err = t.engine.PlaySound(id, samples, board.ID)
+				} else {
+					err = t.engine.PlaySoundboard(id, samples, board.ID)
+				}
 				if err == nil && t.SoundPlayed != nil {
 					t.SoundPlayed(id)
 				}
