@@ -26,6 +26,7 @@ function renderShortcuts(){
  }
  const controls=$('workspaceShortcutList');controls.replaceChildren();
  for(const [key,action] of [
+  ['Alt, Alt','From anywhere in Windows: open Molovox Labs on the Soundboard tab.'],
   ['Type · Backspace · Escape','Soundboard: search, edit the search, clear it. A unique match plays automatically.'],
   ['Space','Trimmer: toggle looping preview. Arrangement: play or pause.'],
   ['Space + drag','Pan the Patch bay or Arrangement.'],

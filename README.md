@@ -4,6 +4,8 @@ A Windows app for soundboards, video samples and live audio. Mix your microphone
 
 Built by **Molotov**.
 
+Closing or minimizing the window keeps it running in the tray. Tap Alt twice to open Soundboard, or right-click the tray icon to quit.
+
 ## Installation
 
 1. Download **MolovoxLabs.exe** from [Releases](https://github.com/AmirMolotov/MolovoxLabs/releases) and run it on **Windows x64**. No account needed.

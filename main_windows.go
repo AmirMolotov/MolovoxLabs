@@ -510,5 +510,19 @@ func main() {
 	}
 
 	window.Navigate(fmt.Sprintf("http://%s%s", listener.Addr(), prefix+"studio.html"))
+	tray, err := installDesktopTray(uintptr(window.Window()), func() {
+		window.Dispatch(func() {
+			window.Eval("window.MOLOVOX_OPEN_SOUNDBOARD=true;window.dispatchEvent(new Event('molovox-open-soundboard'));")
+		})
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer tray.Close()
+	tray.keys, err = newAltTapListener(uintptr(window.Window()))
+	if err != nil {
+		tray.Close()
+		log.Fatal(err)
+	}
 	window.Run()
 }
