@@ -10,13 +10,17 @@ Closing or minimizing the window keeps it running in the tray. Tap Alt twice to 
 
 1. Download **MolovoxLabs.exe** from [Releases](https://github.com/AmirMolotov/MolovoxLabs/releases) and run it on **Windows x64**. No account needed.
 2. Install [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) if it isn't already on your computer.
-3. Install [FFmpeg 7 or newer](https://ffmpeg.org/download.html) for media importing, previews and exports. Include both `ffmpeg` and `ffprobe` on PATH, or use:
+3. Install **FFmpeg 7 or newer** to import, preview, and export media. Molovox Labs needs both `ffmpeg.exe` and `ffprobe.exe`.
 
-   ```powershell
-   winget install --id Gyan.FFmpeg --exact
-   ```
+### FFmpeg on Windows
 
-   Restart the app after installing.
+1. Open the [official FFmpeg download page](https://ffmpeg.org/download.html). Under **Windows EXE Files**, follow the [gyan.dev Windows builds link](https://www.gyan.dev/ffmpeg/builds/) and download `ffmpeg-release-essentials.zip`.
+2. Extract the ZIP to a permanent location. Find the `bin` folder containing `ffmpeg.exe` and `ffprobe.exe`, for example `C:\Tools\ffmpeg\bin`.
+3. In the Start menu, search for **Edit environment variables for your account**. Under **User variables**, select **Path → Edit → New** and add the full path to that `bin` folder. Click **OK** to save.
+
+Alternatively, install it with `winget install --id Gyan.FFmpeg --exact`.
+
+Open a new PowerShell window and run `ffmpeg -version` and `ffprobe -version` to confirm both are on PATH. Then quit Molovox Labs from the system tray and reopen it.
 
 To send your mix to Discord or another app, install [VB-CABLE](https://vb-audio.com/Cable/). Choose **CABLE Input** as an output in Molovox Labs and **CABLE Output** as Discord's microphone. You can select your headphones too, so you hear the mix. VB-CABLE is optional for normal playback.
 
