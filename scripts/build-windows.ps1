@@ -4,8 +4,19 @@ $taskRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $taskApp = Join-Path $taskRoot 'MolovoxLabs.exe'
 $taskLegacyApp = Join-Path $taskRoot 'QuietLab.exe'
 $taskBuild = Join-Path $taskRoot '.molovox-build.tmp'
+$taskEnvironment = @{}
+foreach ($taskName in @('TEMP', 'TMP', 'GOTMPDIR', 'GOCACHE')) {
+    $taskEnvironment[$taskName] = [Environment]::GetEnvironmentVariable($taskName, 'Process')
+}
 Push-Location $taskRoot
 try {
+    $taskTemp = Join-Path $taskRoot '.build\tmp'
+    $taskCache = Join-Path $taskRoot '.build\go-cache'
+    New-Item -ItemType Directory -Path $taskTemp, $taskCache -Force | Out-Null
+    $env:TEMP = $taskTemp
+    $env:TMP = $taskTemp
+    $env:GOTMPDIR = $taskTemp
+    $env:GOCACHE = $taskCache
     & cmd /c native\vst3\build.cmd
     if ($LASTEXITCODE -ne 0) { throw 'Native VST3 host/icon build failed.' }
     & go test ./...
@@ -26,4 +37,9 @@ try {
     if (Test-Path -LiteralPath $taskLegacyApp) { Remove-Item -LiteralPath $taskLegacyApp }
     if ($Run -or $taskRunning.Count -gt 0) { Start-Process -FilePath $taskApp -WindowStyle Hidden }
     Write-Output "Updated $taskApp"
-} finally { Pop-Location }
+} finally {
+    foreach ($taskName in $taskEnvironment.Keys) {
+        [Environment]::SetEnvironmentVariable($taskName, $taskEnvironment[$taskName], 'Process')
+    }
+    Pop-Location
+}

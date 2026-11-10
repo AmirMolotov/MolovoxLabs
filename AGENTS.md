@@ -1,4 +1,4 @@
-﻿# Molovox Labs development rules
+# Molovox Labs development rules
 
 ## Project and user data
 
@@ -34,7 +34,7 @@
 | `third_party/` | Vendored VST3 interfaces and licence files |
 | `release/` | Ignored local test output; never a second application distribution |
 
-Keep the root for project instructions, module/container configuration, notices, artwork/source folders and the single executable. `web/` is source, not generated output; there is no frontend bundler.
+Keep the root for project instructions, Go module configuration, notices, artwork/source folders and the single executable. `web/` is source, not generated output; there is no frontend bundler.
 
 ## Patterns and boundaries
 
@@ -45,7 +45,7 @@ Keep the root for project instructions, module/container configuration, notices,
 - Keep interface modules organized by feature. Preserve the ordered classic-script loading in HTML and the CommonJS exports used by Node tests. Do not introduce a framework, bundler, module conversion or global-state rewrite as incidental cleanup.
 - Browser script and worklet URLs resolve against the page: use `js/<file>.js`. HTML styles use `css/<file>.css`, images use `images/<file>`, and stylesheet image URLs use `../images/<file>`.
 - Register a new script once in the appropriate HTML entry point. `scripts/verify-studio.py` derives the studio script list from HTML; do not maintain a second list there.
-- Update every affected import, embed pattern, HTML/CSS/dynamic URL, fixture path, test, script and Docker path together when moving files. Do not leave compatibility copies behind.
+- Update every affected import, embed pattern, HTML/CSS/dynamic URL, fixture path, test and script path together when moving files. Do not leave compatibility copies behind.
 - Remove superseded release packages and disposable QA output after checks. Keep only the root application executable. Do not delete source, native fixtures needed by tests, vendored headers, or user media merely because they lack a direct text reference.
 - Keep `//go:build` constraints and `_windows.go` / `_windows_amd64.go` suffixes appropriate to platform-specific code. Run `gofmt` on changed Go files.
 
@@ -62,7 +62,7 @@ Keep the root for project instructions, module/container configuration, notices,
 
 ## Checks and build
 
-Run commands from the repository root. Use the existing tools; do not add a second build pipeline.
+Run commands from the repository root. Use the existing tools; do not add a second build pipeline. The build script keeps temporary files and Go build caches in ignored `.build/` on the project drive, and restores the caller's environment on exit. Docker is not used.
 
 ```powershell
 .\scripts\build-windows.ps1

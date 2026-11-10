@@ -1,6 +1,0 @@
-*
-!Dockerfile
-!nginx.conf
-!web/
-!web/**
-web/*.go

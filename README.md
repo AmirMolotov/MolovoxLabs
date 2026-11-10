@@ -36,8 +36,10 @@ You'll need Go 1.27+, Node.js, Python, and Visual Studio C++ Build Tools with th
 .\scriptsuild-windows.ps1 -Run
 ```
 
-Set `VCVARS64` to your Visual Studio `vcvars64.bat` path if the script can't find it. The script runs the checks and builds one `MolovoxLabs.exe`.
+Set `VCVARS64` to your Visual Studio `vcvars64.bat` path if the script can't find it. The script runs the checks and builds one `MolovoxLabs.exe`. Docker is not required. Temporary files and Go build caches go into the ignored `.build/` folder on the project drive; keep free space on that drive.
 
 Source layout and development rules are in [AGENTS.md](AGENTS.md). The Windows application lives in `cmd/molovoxlabs/`; hand-written interface assets live in `web/` and are embedded at build time. Run Go commands from the repository root with `./...` for checks or `./cmd/molovoxlabs` for the application.
 
 See [third-party notices](THIRD-PARTY-NOTICES.txt) for dependency licences.
+
+If the app exits unexpectedly, check `%APPDATA%/QuietLab/logs/app.log` and `app.previous.log`. These retain startup/errors and unhandled Go crash traces from the current and previous session. A forced termination or native plugin crash may leave no Go trace.

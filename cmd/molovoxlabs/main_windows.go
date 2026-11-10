@@ -98,6 +98,14 @@ func main() {
 	if *dataRoot != "" {
 		appRoot = *dataRoot
 	}
+	if diagnosticLog, err := openDiagnosticLog(appRoot); err != nil {
+		log.Printf("Could not enable diagnostic logging: %v", err)
+	} else {
+		defer diagnosticLog.Close()
+		log.SetOutput(diagnosticLog)
+		log.Printf("Molovox Labs starting; Go %s", runtime.Version())
+		defer log.Print("Molovox Labs stopped normally")
+	}
 	profile := filepath.Join(appRoot, "WebView2")
 	store := &appStore{root: appRoot}
 	engine := &nativeEngine{}

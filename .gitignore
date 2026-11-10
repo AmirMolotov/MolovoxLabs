@@ -1,5 +1,6 @@
 # Generated builds and developer output
 release/
+/.build/
 *.exe
 *.zip
 *.log
@@ -95,3 +96,6 @@ vst-plugins.json
 !.env.example
 *.pem
 *.key
+
+# Local runtime diagnostics
+/logs/
