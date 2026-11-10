@@ -1,5 +1,5 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
-const loading=fs.readFileSync(path.join(__dirname,'../dist/studio-loading.js'),'utf8');
+const loading=fs.readFileSync(path.join(__dirname,'../web/js/studio-loading.js'),'utf8');
 function harness(){
  const elements=new Map();const h={painted:0,$:id=>{if(!elements.has(id))elements.set(id,{hidden:true,textContent:''});return elements.get(id);},document:{querySelector:selector=>h.$(selector)},requestAnimationFrame:fn=>setImmediate(()=>{h.painted++;fn();}),setTimeout};
  vm.createContext(h);vm.runInContext(loading,h);return h;
@@ -25,7 +25,7 @@ test('settings queue survives failure and applies the latest configuration after
 test('rapid routing edits coalesce and final soundboard route wins',async()=>{
  const h=harness(),applied=[];let release,value='microphone';const gate=new Promise(resolve=>release=resolve);
  Object.assign(h,{updateLabels(){},options:()=>({route:value}),async nativeConfigure(o){applied.push(o.route);if(applied.length===1)await gate;},scheduleSave(){},refreshVSTCards(){},patchGraph:null,message(){}});
- const source=fs.readFileSync(path.join(__dirname,'../dist/studio.js'),'utf8'),start=source.indexOf('let configurePending='),end=source.indexOf("['master','boardVolume']",start);
+ const source=fs.readFileSync(path.join(__dirname,'../web/js/studio.js'),'utf8'),start=source.indexOf('let configurePending='),end=source.indexOf("['master','boardVolume']",start);
  vm.runInContext(source.slice(start,end),h);const first=h.configure();
  while(!applied.length)await new Promise(resolve=>setImmediate(resolve));
  value='soundboard';const second=h.configure();release();await Promise.all([first,second]);

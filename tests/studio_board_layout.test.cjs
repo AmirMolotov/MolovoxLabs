@@ -9,7 +9,7 @@ function harness(){
   nativePlaySound:async id=>h.calls.push(id),start:async()=>true,message(){},errorText:String,
  };
  for(const s of h.library.Boards[0].Sounds)h.padViews.set(s.ID,{pad:element()});
- vm.createContext(h);vm.runInContext(fs.readFileSync('dist/studio-board-layout.js','utf8'),h);
+ vm.createContext(h);vm.runInContext(fs.readFileSync('web/js/studio-board-layout.js','utf8'),h);
  h.key=(key,other={})=>{const e={key,target:{closest:()=>null},preventDefault(){this.prevented=true;},stopImmediatePropagation(){this.stopped=true;},...other};listeners.keydown(e);return e;};
  h.run=async delay=>{for(const [id,t] of [...timers])if(t.delay===delay){timers.delete(id);await t.fn();}await new Promise(r=>setImmediate(r));};
  return h;

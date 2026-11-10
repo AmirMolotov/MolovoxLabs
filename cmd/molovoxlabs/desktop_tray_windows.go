@@ -115,12 +115,12 @@ func newAltTapListener(hwnd uintptr) (*altTapListener, error) {
 		}
 		detector.altDown = detector.down[18] || detector.down[164] || detector.down[165]
 		detector.used = detector.altDown
-		callback := windows.NewCallback(func(code, wp, lp uintptr) uintptr {
+		callback := windows.NewCallback(func(code, wp uintptr, lp unsafe.Pointer) uintptr {
 			if int32(code) >= 0 {
 				event := (*struct {
 					Key, Scan, Flags, Time uint32
 					Extra                  uintptr
-				})(unsafe.Pointer(lp))
+				})(lp)
 				if event.Flags&0x10 != 0 {
 					detector.pending = false
 					if detector.altDown {
@@ -143,7 +143,7 @@ func newAltTapListener(hwnd uintptr) (*altTapListener, error) {
 					}
 				}
 			}
-			result, _, _ := trayNextHook.Call(0, code, wp, lp)
+			result, _, _ := trayNextHook.Call(0, code, wp, uintptr(lp))
 			return result
 		})
 		module, _, _ := windows.NewLazySystemDLL("kernel32.dll").NewProc("GetModuleHandleW").Call(0)

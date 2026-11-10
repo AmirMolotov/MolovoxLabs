@@ -8,7 +8,7 @@ function harness(){
   $:key=>{if(!controls.has(key))controls.set(key,{textContent:'',value:'',checked:true,style:{},listeners:{},addEventListener(name,handler){this.listeners[name]=handler;}});return controls.get(key);},
   configure:async()=>{h.configured++;},window:{listeners:{},addEventListener(name,handler){this.listeners[name]=handler;}},document:{listeners:{},querySelector:()=>null,addEventListener(name,handler){(this.listeners[name]??=[]).push(handler);}},filterTitle:f=>f.Kind,
  };
- vm.createContext(h);vm.runInContext(fs.readFileSync(path.join(__dirname,'../dist/studio-patch.js'),'utf8'),h);
+ vm.createContext(h);vm.runInContext(fs.readFileSync(path.join(__dirname,'../web/js/studio-patch.js'),'utf8'),h);
  vm.runInContext('renderPatch=()=>{};drawPatchCables=()=>{};patchGraph=defaultPatch("mic",true)',h);
  return h;
 }

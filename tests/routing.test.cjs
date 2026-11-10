@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {openPlaybackRoutes}=require('../dist/routing.js');
+const {openPlaybackRoutes}=require('../web/js/routing.js');
 test('output routing: direct, multiple, failure and cancellation',async()=>{
  const players=[];let stoppedTracks=0;
  global.HTMLMediaElement=class {setSinkId(){}};

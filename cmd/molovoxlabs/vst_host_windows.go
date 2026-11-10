@@ -5,7 +5,6 @@ package main
 import (
 	"context"
 	"crypto/sha256"
-	_ "embed"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -23,11 +22,12 @@ import (
 	"time"
 	"unsafe"
 
+	nativebinary "molovoxlabs/native/bin"
+
 	"golang.org/x/sys/windows"
 )
 
-//go:embed native/bin/MolovoxVST3.dll
-var vstBridgeBinary []byte
+var vstBridgeBinary = nativebinary.VSTBridge
 
 type vstBridge struct {
 	dll                                                                 *windows.DLL

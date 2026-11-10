@@ -12,7 +12,7 @@ function harness(){
  grip.draggable=true;group.value='group-1';keys.textContent='Ctrl+1 · Shift+F2';trim.onclick=()=>{};effects.onclick=()=>{};top.append(grip,group,remove);bottom.append(keys,trim,effects,time);pad.append(top,bottom);
  const view={pad,sound:{ID:'pad',Name:'Victory'},fill:{style:{width:'42%'}}};
  const h={padViews:new Map([['pad',view]]),document:{createElement:()=>new El(),addEventListener:(name,fn)=>events[name]=fn,querySelector:()=>null,querySelectorAll:()=>[]},$:(id)=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);},saves:0,scheduleSave:()=>h.saves++};
- vm.createContext(h);vm.runInContext(fs.readFileSync('dist/studio-board-view.js','utf8'),h);return {h,pad,top,bottom,group,grip,keys,trim,effects,view};
+ vm.createContext(h);vm.runInContext(fs.readFileSync('web/js/studio-board-view.js','utf8'),h);return {h,pad,top,bottom,group,grip,keys,trim,effects,view};
 }
 test('saved Compact view restores without restarting playback or changing the pad and its drag handle',()=>{
  const {h,pad,grip,keys,view}=harness();h.initSoundboardView('compact');assert.equal(h.$('board').classes.has('compact-soundboard'),true);assert.equal(h.$('boardViewCompact').attrs['aria-pressed'],'true');assert.equal(h.$('boardViewStandard').attrs['aria-pressed'],'false');assert.equal(h.saves,0);assert.equal(h.padViews.get('pad').pad,pad);assert.equal(grip.draggable,true);assert.equal(keys.textContent,'Ctrl+1 · Shift+F2');assert.equal(view.fill.style.width,'42%');
@@ -24,5 +24,5 @@ test('switching views moves existing controls into the compact menu and restores
 });
 test('the chosen view is part of the existing preferences payload and missing legacy settings use Standard',()=>{
  const {h}=harness();h.initSoundboardView(undefined);assert.equal(vm.runInContext('soundboardView',h),'standard');h.$('boardViewCompact').onclick();
- Object.assign(h,{vstFolders:()=>[],selections:()=>({}),options:()=>({}),filterGroups:[],allFilterHotkeys:[],allFilterMIDIs:[]});const source=fs.readFileSync('dist/studio.js','utf8');vm.runInContext(source.slice(source.indexOf('function snapshotPreferences'),source.indexOf('async function save')),h);assert.equal(h.snapshotPreferences().SoundboardView,'compact');
+ Object.assign(h,{vstFolders:()=>[],selections:()=>({}),options:()=>({}),filterGroups:[],allFilterHotkeys:[],allFilterMIDIs:[]});const source=fs.readFileSync('web/js/studio.js','utf8');vm.runInContext(source.slice(source.indexOf('function snapshotPreferences'),source.indexOf('async function save')),h);assert.equal(h.snapshotPreferences().SoundboardView,'compact');
 });

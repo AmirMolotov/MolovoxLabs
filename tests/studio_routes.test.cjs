@@ -2,7 +2,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
-const source=fs.readFileSync(require('node:path').join(__dirname,'../dist/studio.js'),'utf8');
+const source=fs.readFileSync(require('node:path').join(__dirname,'../web/js/studio.js'),'utf8');
 const start=source.indexOf('function deviceChoiceChanged()');
 const end=source.indexOf("$('refresh').onclick",start);
 function routingHarness(){

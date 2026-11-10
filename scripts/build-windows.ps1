@@ -15,7 +15,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Interface behavior tests failed.' }
     & python scripts/verify-studio.py
     if ($LASTEXITCODE -ne 0) { throw 'Interface validation failed.' }
-    & go build -trimpath -ldflags '-H=windowsgui -s -w' -o $taskBuild .
+    & go build -trimpath -ldflags '-H=windowsgui -s -w' -o $taskBuild ./cmd/molovoxlabs
     if ($LASTEXITCODE -ne 0) { throw 'Application build failed.' }
     $taskRunning = @(Get-CimInstance Win32_Process -Filter "name = 'MolovoxLabs.exe' OR name = 'QuietLab.exe'" | Where-Object { ($_.ExecutablePath -eq $taskApp -or $_.ExecutablePath -eq $taskLegacyApp) })
     foreach ($taskProcess in $taskRunning) {
@@ -24,6 +24,6 @@ try {
     }
     Move-Item -LiteralPath $taskBuild -Destination $taskApp -Force
     if (Test-Path -LiteralPath $taskLegacyApp) { Remove-Item -LiteralPath $taskLegacyApp }
-    if ($Run -or $taskRunning.Count -gt 0) { Start-Process -FilePath $taskApp }
+    if ($Run -or $taskRunning.Count -gt 0) { Start-Process -FilePath $taskApp -WindowStyle Hidden }
     Write-Output "Updated $taskApp"
 } finally { Pop-Location }

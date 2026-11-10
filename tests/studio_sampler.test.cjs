@@ -1,7 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 function harness(){const elements=new Map();const h={library:{Boards:[]},location:{href:'http://127.0.0.1/token/studio.html'},URL,Map,DataView,ArrayBuffer,Float32Array,TextEncoder,performance,setTimeout,clearTimeout,
  $:id=>{if(!elements.has(id))elements.set(id,{value:'',textContent:'',classList:{add(){},remove(){}},hidden:false});return elements.get(id);},
- document:{querySelectorAll:()=>[]},window:{addEventListener(){}},nativeStopSound:async()=>{},};vm.createContext(h);vm.runInContext(fs.readFileSync(path.join(__dirname,'../dist/studio-sampler.js'),'utf8'),h);return h;}
+ document:{querySelectorAll:()=>[]},window:{addEventListener(){}},nativeStopSound:async()=>{},};vm.createContext(h);vm.runInContext(fs.readFileSync(path.join(__dirname,'../web/js/studio-sampler.js'),'utf8'),h);return h;}
 test('sampler WAV contains only selected time range at native 48 kHz',()=>{
  const h=harness(),channel=new Float32Array(4800);channel.fill(.25,2400);
  const buffer={sampleRate:48000,numberOfChannels:1,getChannelData:()=>channel};const wav=h.samplerWAV(buffer,.05,.1),view=new DataView(wav);
@@ -65,7 +65,7 @@ test('all active video crops appear in the composite captured by performance rec
  ctx.draws=[];vm.runInContext('samplerActive=samplerActive.slice(0,2)',h);h.drawSamplerStage();assert.equal(ctx.draws.length,2);assert.equal(ctx.draws[1].x,480);assert.equal(h.$('samplerNowPlaying').textContent,'2 videos playing');
 });
 test('recording worklet streams queued PCM in order',()=>{
- let Processor;const h={AudioWorkletProcessor:class{constructor(){this.port={};}},registerProcessor(name,klass){Processor=klass;},Float32Array};vm.createContext(h);vm.runInContext(fs.readFileSync(path.join(__dirname,'../dist/sampler-audio-worklet.js'),'utf8'),h);
+ let Processor;const h={AudioWorkletProcessor:class{constructor(){this.port={};}},registerProcessor(name,klass){Processor=klass;},Float32Array};vm.createContext(h);vm.runInContext(fs.readFileSync(path.join(__dirname,'../web/js/sampler-audio-worklet.js'),'utf8'),h);
  const p=new Processor(),output=new Float32Array(4);p.port.onmessage({data:{type:'chunk',samples:new Float32Array([.1,.2,.3])}});p.process([],[[output]]);assert.deepEqual(Array.from(output),[0,0,0,0]);
  p.port.onmessage({data:{type:'chunk',samples:new Float32Array([.4,.5])}});p.port.onmessage({data:{type:'start'}});p.process([],[[output]]);assert.ok(Math.abs(output[0]-.1)<1e-6);assert.ok(Math.abs(output[3]-.4)<1e-6);
  p.process([],[[output]]);assert.ok(Math.abs(output[0]-.5)<1e-6);assert.deepEqual(Array.from(output.slice(1)),[0,0,0]);

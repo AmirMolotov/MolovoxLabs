@@ -1,5 +1,5 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-const source=fs.readFileSync('dist/studio.js','utf8');
+const source=fs.readFileSync('web/js/studio.js','utf8');
 test('delay toggle is included in saved audio options and applies without restarting listening',()=>{
  const controls=new Map();const h={$:id=>{if(!controls.has(id))controls.set(id,{checked:false,value:'100'});return controls.get(id);},patchOptions:()=>({}),micFilters:[],bypassFilters:false,selections:()=>({Inputs:[]}),configure:value=>h.configured=value};vm.createContext(h);vm.runInContext(source.slice(source.indexOf('function options()'),source.indexOf('function snapshotPreferences()')),h);vm.runInContext(source.slice(source.indexOf("$('monitorMic').onchange"),source.indexOf("$('autoListen').onchange")),h);
  assert.equal(h.options().SoundboardDelay,false);h.$('boardDelay').checked=true;h.$('boardDelay').onchange();assert.equal(h.options().SoundboardDelay,true);assert.equal(h.configured,true);assert.equal(h.options().MonitorMic,false);

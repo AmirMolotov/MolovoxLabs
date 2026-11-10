@@ -19,7 +19,7 @@ function harness(){
   beginLoading(){return ()=>{};},async paintLoading(){},async withLoading(label,task){return task();},async save(){h.saved++;},async configure(){h.configured++;},renderFilters(){},renderGroups(){},
   document:{querySelectorAll:()=>[]},message(text){h.lastMessage=text;},errorText:e=>e.message||String(e),setInterval(){},setTimeout,clearTimeout,queueMicrotask,
  };
- vm.createContext(h);vm.runInContext(fs.readFileSync(path.join(__dirname,'../dist/studio-vst.js'),'utf8'),h);
+ vm.createContext(h);vm.runInContext(fs.readFileSync(path.join(__dirname,'../web/js/studio-vst.js'),'utf8'),h);
  return {h,element,plugin};
 }
 test('selecting a scanned plugin adds it immediately and preserves its identity',async()=>{

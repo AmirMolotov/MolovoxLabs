@@ -85,10 +85,9 @@ vst-plugins.json
 
 # These are application artwork, not imported user media
 !/assets/molovox-labs-source.png
-!/assets/molovox-labs.png
 !/assets/molovox-labs.ico
-!/dist/molovox-labs.png
-!/dist/molovox-labs.ico
+!/web/images/molovox-labs.png
+!/web/images/molovox-labs.ico
 
 # Local credentials and machine settings
 .env

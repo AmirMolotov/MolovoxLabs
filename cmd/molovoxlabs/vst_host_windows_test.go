@@ -11,7 +11,7 @@ import (
 
 func testVSTFilter(t *testing.T) MicFilter {
 	t.Helper()
-	path, err := filepath.Abs("native/test/MolovoxTestGain.vst3")
+	path, err := filepath.Abs("../../native/test/MolovoxTestGain.vst3")
 	if err != nil {
 		t.Fatal(err)
 	}

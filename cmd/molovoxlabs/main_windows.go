@@ -5,13 +5,11 @@ package main
 import (
 	"context"
 	"crypto/rand"
-	"embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
-	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -21,18 +19,13 @@ import (
 	"strings"
 	"time"
 
+	"molovoxlabs/web"
+
 	webview "github.com/jchv/go-webview2"
 )
 
-//go:embed dist/*
-var assets embed.FS
-
 func assetHandler(prefix string) http.Handler {
-	root, err := fs.Sub(assets, "dist")
-	if err != nil {
-		panic(err)
-	}
-	files := http.StripPrefix(prefix, http.FileServer(http.FS(root)))
+	files := http.StripPrefix(prefix, http.FileServer(http.FS(web.Files)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Permissions-Policy", "microphone=(self), camera=()")
