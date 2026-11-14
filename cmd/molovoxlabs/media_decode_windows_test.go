@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -38,6 +39,26 @@ func generateMedia(t *testing.T, name string, args ...string) string {
 		t.Fatal(err, string(output))
 	}
 	return path
+}
+func TestImportMP3Audio(t *testing.T) {
+	for _, cover := range []bool{false, true} {
+		t.Run(fmt.Sprint("cover=", cover), func(t *testing.T) {
+			args := []string{"-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100"}
+			if cover {
+				args = append(args, "-f", "lavfi", "-i", "color=blue:size=64x64", "-map", "0:a", "-map", "1:v", "-c:v", "mjpeg", "-disposition:v", "attached_pic")
+			}
+			args = append(args, "-t", "1", "-c:a", "libmp3lame")
+			path := generateMedia(t, "track.mp3", args...)
+			s := &appStore{root: t.TempDir()}
+			info, err := s.ImportAudioMedia(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !info.HasAudio || info.HasVideo || info.Frames < 48000 {
+				t.Fatalf("Expected audio-only MP3 with decoded samples: %+v", info)
+			}
+		})
+	}
 }
 func TestNativeMediaConvertsVideoAndSavesEditedPad(t *testing.T) {
 	path := generateMedia(t, "test-codec.avi", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=12", "-f", "lavfi", "-i", "sine=frequency=660:sample_rate=44100", "-t", "1.5", "-c:v", "mpeg4", "-q:v", "3", "-c:a", "pcm_s16le")

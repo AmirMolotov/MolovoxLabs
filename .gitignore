@@ -87,6 +87,8 @@ vst-plugins.json
 # These are application artwork, not imported user media
 !/assets/molovox-labs-source.png
 !/assets/molovox-labs.ico
+!/assets/guides/install.gif
+!/assets/guides/features.gif
 !/web/images/molovox-labs.png
 !/web/images/molovox-labs.ico
 

@@ -95,6 +95,9 @@ func (s *appStore) PrepareMedia(id string) (MediaInfo, error) {
 			PixelFormat   string `json:"pix_fmt"`
 			Width, Height int
 			Duration      string `json:"duration"`
+			Disposition   struct {
+				AttachedPic int `json:"attached_pic"`
+			} `json:"disposition"`
 		}
 	}
 	if err = json.Unmarshal(data, &description); err != nil {
@@ -108,7 +111,7 @@ func (s *appStore) PrepareMedia(id string) (MediaInfo, error) {
 		if stream.Type == "audio" {
 			info.HasAudio = true
 		}
-		if stream.Type == "video" && stream.Width > 0 {
+		if stream.Type == "video" && stream.Width > 0 && stream.Disposition.AttachedPic == 0 {
 			info.HasVideo = true
 			info.Width = stream.Width
 			info.Height = stream.Height
