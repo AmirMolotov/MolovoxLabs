@@ -22,6 +22,7 @@ import (
 	"molovoxlabs/web"
 
 	webview "github.com/jchv/go-webview2"
+	"golang.org/x/sys/windows"
 )
 
 func assetHandler(prefix string) http.Handler {
@@ -90,6 +91,14 @@ func main() {
 		}
 		return
 	}
+	instance, err := openInstanceMutex(`Local\MolovoxLabs`)
+	if errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
+		return
+	}
+	if err != nil {
+		log.Fatal("Could not guard application instance: ", err)
+	}
+	defer windows.CloseHandle(instance)
 	config, err := os.UserConfigDir()
 	if err != nil {
 		log.Fatal(err)
@@ -284,12 +293,17 @@ func main() {
 		"nativeRecordingAsSource":      store.RecordingAsSource,
 		"nativeRemoveSamplerRecording": store.RemoveRecording,
 		"nativeLoadPreferences":        store.LoadPreferences,
-		"nativeScanVST":                func(folders []string) error { return scanner.start(store, folders) },
-		"nativeVSTScanStatus":          scanner.snapshot,
-		"nativeLoadVSTPlugins":         store.VSTLibrary,
-		"nativeSnapshotEffects":        engine.vst.capture,
-		"nativeVSTInfo":                engine.vst.info,
-		"nativeVSTEditor":              engine.vst.editor,
+		"nativeAppAudioSources":        engine.AppAudioSources,
+		"nativeLoadWindowsStartup":     loadWindowsStartup,
+		"nativeSaveWindowsStartup": func(enabled bool) error {
+			return saveWindowsStartup(enabled, *dataRoot)
+		},
+		"nativeScanVST":         func(folders []string) error { return scanner.start(store, folders) },
+		"nativeVSTScanStatus":   scanner.snapshot,
+		"nativeLoadVSTPlugins":  store.VSTLibrary,
+		"nativeSnapshotEffects": engine.vst.capture,
+		"nativeVSTInfo":         engine.vst.info,
+		"nativeVSTEditor":       engine.vst.editor,
 		"nativeVSTParameter": func(id string, param uint32, value float64) error {
 			if err := engine.vst.parameter(id, param, value); err != nil {
 				return err

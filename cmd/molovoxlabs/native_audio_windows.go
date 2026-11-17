@@ -167,20 +167,25 @@ type captureEndpoint struct {
 	device *audio.Device
 }
 type renderEndpoint struct {
-	ID        string
-	index     int
-	liveGains [8]float32
-	published [8]atomic.Uint64
-	filters   micFilterChain
-	soundIDs  [8]uint64
-	soundAt   [8]int
-	device    *audio.Device
-	readers   []ringReader
-	dsp       processor
-	toneSeen  uint64
-	toneLeft  int
+	appSnapshot *appAudioSnapshot
+	appRings    [32]*sampleRing
+	appReaders  [32]ringReader
+	appSamples  [32]float32
+	ID          string
+	index       int
+	liveGains   [8]float32
+	published   [8]atomic.Uint64
+	filters     micFilterChain
+	soundIDs    [8]uint64
+	soundAt     [8]int
+	device      *audio.Device
+	readers     []ringReader
+	dsp         processor
+	toneSeen    uint64
+	toneLeft    int
 }
 type nativeEngine struct {
+	appAudio       appAudioCapture
 	arrangement    atomic.Pointer[arrangementTransport]
 	micRecordTap   atomic.Pointer[samplerAudioTap]
 	soloClips      bool
@@ -287,6 +292,14 @@ func (e *nativeEngine) Configure(o AudioOptions) error {
 	}
 	e.vst.configure(o.Filters, outputs)
 	e.options.Store(&o)
+	if compiled != nil {
+		for _, step := range compiled.steps {
+			if step.kind == "app" {
+				e.appAudio.start(e)
+				break
+			}
+		}
+	}
 	return nil
 }
 func config(kind audio.DeviceType, id *audio.DeviceID) audio.DeviceConfig {
@@ -308,7 +321,7 @@ func (e *nativeEngine) Start(req StartRequest) error {
 	if e.running.Load() {
 		return errors.New("Stop the current session first")
 	}
-	if len(req.Inputs) < 1 || len(req.Inputs) > 8 || len(req.Outputs) < 1 || len(req.Outputs) > 8 {
+	if (len(req.Inputs) < 1 && !req.Options.Patch.Enabled) || len(req.Inputs) > 8 || len(req.Outputs) < 1 || len(req.Outputs) > 8 {
 		return errors.New("Select 1–8 microphones and 1–8 outputs")
 	}
 	if err := e.initContext(); err != nil {
@@ -412,6 +425,7 @@ func (e *nativeEngine) render(r *renderEndpoint, output []byte, frames int, prim
 	} else if len(r.filters.slots) != len(o.Filters) {
 		r.filters = *prepareFilterChain(o.Filters, &r.filters, 0)
 	}
+	r.prepareAppAudio(e.appAudio.current.Load())
 	transport := e.arrangement.Load()
 	rack := e.vst.current.Load()
 	r.filters.vstVoice = r.index
@@ -450,6 +464,7 @@ func (e *nativeEngine) render(r *renderEndpoint, output []byte, frames int, prim
 	var inputSum, outputSum float64
 	missing := false
 	for frame := 0; frame < frames; frame++ {
+		r.nextAppAudio()
 		x := float32(0)
 		for i, c := range e.captures {
 			v, ok := r.readers[i].next(&c.ring)
@@ -458,7 +473,9 @@ func (e *nativeEngine) render(r *renderEndpoint, output []byte, frames int, prim
 			}
 			x += v * r.liveGains[i]
 		}
-		x /= float32(len(e.captures))
+		if len(e.captures) > 0 {
+			x /= float32(len(e.captures))
+		}
 		if micTap != nil {
 			micTap.data[(micAt+uint64(frame))%captureRingSize].Store(math.Float32bits(x))
 		}
@@ -560,6 +577,7 @@ func (e *nativeEngine) Close() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.stopLocked()
+	e.appAudio.close()
 	e.vst.close()
 	if e.context != nil {
 		e.context.Uninit()

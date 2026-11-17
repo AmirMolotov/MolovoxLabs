@@ -9,6 +9,7 @@ function harness(){
   configure:async()=>{h.configured++;},window:{listeners:{},addEventListener(name,handler){this.listeners[name]=handler;}},document:{listeners:{},querySelector:()=>null,addEventListener(name,handler){(this.listeners[name]??=[]).push(handler);}},filterTitle:f=>f.Kind,
  };
  vm.createContext(h);vm.runInContext(fs.readFileSync(path.join(__dirname,'../web/js/studio-patch.js'),'utf8'),h);
+ h.renderActualPatch=h.renderPatch;
  vm.runInContext('renderPatch=()=>{};drawPatchCables=()=>{};patchGraph=defaultPatch("mic",true)',h);
  return h;
 }
@@ -114,6 +115,47 @@ test('duplicate effect nodes get independent settings and no inherited shortcuts
  assert.deepEqual(after.Cables,before.Cables);
 });
 
+test('a pending cable survives Space-drag and can connect after Space is released',()=>{
+ const h=harness(),viewport=h.$('patchViewport'),before=h.patchOptions(),source=before.Nodes.find(n=>n.Kind==='board'),target=before.Nodes.find(n=>n.Kind==='effect');
+ h.currentTab='patch';h.source=source.ID;vm.runInContext('patchPending=source;patchPointer={x:300,y:200}',h);
+ let captured=false;
+ Object.assign(viewport,{classList:{add(){},remove(){},toggle(){}},setPointerCapture(){captured=true;},hasPointerCapture(){return captured;},releasePointerCapture(){captured=false;}});
+ h.$('patchStage').getBoundingClientRect=()=>({left:-30,top:-40});
+ const key={code:'Space',target:{closest:()=>false},preventDefault(){}};
+ for(const handler of h.document.listeners.keydown)handler(key);
+ viewport.listeners.pointerdown({button:0,pointerId:5,clientX:80,clientY:50,currentTarget:viewport,preventDefault(){},stopPropagation(){}});
+ h.window.listeners.pointermove({pointerId:5,clientX:50,clientY:10});
+ h.document.listeners.keyup[0](key);
+ h.window.listeners.pointerup({button:0,pointerId:5});
+ assert.equal(vm.runInContext('patchPending',h),source.ID);
+ assert.deepEqual(h.patchOptions(),before);assert.equal(h.configured,0);
+ h.window.listeners.pointermove({pointerId:5,clientX:100,clientY:120});
+ assert.deepEqual({...vm.runInContext('patchPointer',h)},{x:130,y:160});
+ h.document.elementFromPoint=()=>({closest:()=>({dataset:{node:target.ID}})});
+ h.window.listeners.pointerup({button:0,pointerId:5,clientX:100,clientY:120});
+ assert.equal(h.configured,1);assert.equal(vm.runInContext('patchPending',h),null);
+});
+
+test('source sliders apply live volume, survive preset refresh and leave effects and outputs alone',()=>{
+ const h=harness();
+ function element(){return {children:[],options:[],style:{},dataset:{},classList:{toggle(){}},setAttribute(name,value){this[name]=value;},append(...items){this.children.push(...items);},replaceChildren(...items){this.children=items;this.options=items;},add(item){this.options.push(item);}};}
+ h.document.createElement=element;h.renderEffectParameters=element;h.Option=function(label,value){return {label,value};};h.selections=()=>({Outputs:[]});h.filterNames={};h.filterDefaults={};
+ for(const id of ['patchBoardPreset','patchMicPreset','patchSource','patchEffect','patchOutput','patchNodes'])Object.assign(h.$(id),element());
+ vm.runInContext('patchGraph.Nodes=patchGraph.Nodes.filter(n=>n.Kind!=="effect");patchGraph.Cables=[]',h);
+ h.renderActualPatch();
+ const source=h.patchOptions().Nodes.find(n=>n.Kind==='board');
+ const card=h.$('patchNodes').children.find(n=>n.dataset.patchNode===source.ID),control=card.children.find(n=>n.className==='patch-source-volume'),slider=control.children.find(n=>n.type==='range'),value=control.children.find(n=>n.textContent==='100%');
+ assert.match(slider['aria-label'],/Volume of/);assert.equal(Number(slider.value),100);
+ h.configure=parametersOnly=>{assert.equal(parametersOnly,true);h.configured++;h.patchOptions();};
+ for(const percentage of [35,0,100]){slider.value=String(percentage);slider.oninput();assert.equal(h.patchOptions().Nodes.find(n=>n.ID===source.ID).Volume,percentage/100);assert.equal(value.textContent,percentage+'%');}
+ assert.equal(h.configured,3);
+ for(const kind of ['clip','app']){
+  h.node={ID:kind,Kind:kind,ClipID:'pad',AppPath:'C:\\player.exe'};vm.runInContext('patchGraph.Preset="";patchGraph.Nodes.push(node)',h);
+ }
+ h.renderActualPatch();
+ for(const card of h.$('patchNodes').children){const node=h.patchOptions().Nodes.find(n=>n.ID===card.dataset.patchNode);assert.equal(card.children.some(n=>n.className==='patch-source-volume'),['mic','board','clip','app'].includes(node.Kind));}
+});
+
 test('full-screen patch view fits nodes and restores view, focus and background on exit',()=>{
  const h=harness(),viewport=h.$('patchViewport'),stage=h.$('patchStage'),workspace=h.$('patchWorkspace');
  const background={tagName:'ASIDE',inert:false};
@@ -175,4 +217,15 @@ test('effect instances and nodes can be added beyond the old eight-effect and 32
  for(let i=0;i<40;i++)h.addPatchEffectInstance({Kind:'gain',GainDB:0,Enabled:true},100+i*40,-12000);
  assert.equal(h.micFilters.length,42);
  assert.ok(h.patchOptions().Nodes.length>32);
+});
+
+test('app sources refresh dynamically, retain executable identity and reject incoming cables',async()=>{
+ const h=harness(),picker=h.$('patchAppSource');picker.replaceChildren=(...items)=>{picker.items=items;};picker.add=item=>picker.items.push(item);
+ h.Option=function(label,value){return {label,value};};h.currentTab='patch';h.setTimeout=fn=>{h.refreshNext=fn;return 1;};h.clearTimeout=()=>{};h.document.querySelectorAll=()=>[];h.errorText=e=>e.message;
+ const path='C:\\Music\\player.exe';h.nativeAppAudioSources=async()=>({Supported:true,Apps:[{Path:path,Name:'player.exe',Status:'Playing'}]});
+ await h.refreshPatchApps();assert.equal(picker.items[1].value,path);assert.equal(typeof h.refreshNext,'function');picker.value=path;picker.onchange();
+ const app=h.patchOptions().Nodes.find(n=>n.Kind==='app');assert.equal(app.AppPath,path);assert.equal(h.patchName(app),'player.exe');const out=h.patchOptions().Nodes.find(n=>n.Kind==='output');assert.equal(h.patchRawCableAllowed(out.ID,app.ID),false);assert.equal(h.patchRawCableAllowed(app.ID,out.ID),true);
+ h.nativeAppAudioSources=async()=>({Supported:true,Apps:[{Path:path,Name:'player.exe',Status:'Waiting for audio'}]});await h.refreshNext();assert.equal(h.patchAppState(path),'Waiting for audio');assert.equal(h.patchOptions().Nodes.find(n=>n.ID===app.ID).AppPath,path);
+ h.nativeAppAudioSources=async()=>{throw Error('Access denied');};await h.refreshPatchApps();assert.match(h.$('patchAppStatus').textContent,/Access denied/);
+ h.nativeAppAudioSources=async()=>({Supported:false,Apps:[]});await h.refreshPatchApps();assert.equal(picker.disabled,true);
 });

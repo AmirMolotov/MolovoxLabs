@@ -15,7 +15,7 @@ function openTab(name){
  if(currentTab!==name&&typeof stopTrimLoop==='function')stopTrimLoop();currentTab=name;
  for(const tab of document.querySelectorAll('[data-tab]')){const on=tab.dataset.tab===name;tab.setAttribute('aria-selected',String(on));tab.tabIndex=on?0:-1;$(tab.getAttribute('aria-controls')).hidden=!on;}
  if(name==='shortcuts'&&typeof renderShortcuts==='function')renderShortcuts();
- if(active)poll();else idle();if(name==='patch'){renderPatch();togglePatchFocus(true);}if(name==='sampler'||name==='recording')refreshSamplerRecordOutputs();if(name==='arrange'&&typeof renderArrangement==='function')renderArrangement();
+ if(active)poll();else idle();if(name==='patch'){renderPatch();togglePatchFocus(true);refreshPatchApps();}if(name==='sampler'||name==='recording')refreshSamplerRecordOutputs();if(name==='arrange'&&typeof renderArrangement==='function')renderArrangement();
 }
 document.querySelectorAll('[data-tab]').forEach(tab=>{
  tab.onclick=()=>openTab(tab.dataset.tab);
@@ -47,6 +47,18 @@ function configure(parametersOnly){
 ['master','boardVolume'].forEach(id=>$(id).oninput=configure);
 $('monitorMic').onchange=configure;$('boardDelay').onchange=()=>configure(true);
 $('autoListen').onchange=save;
+$('windowsStartup').onchange=async()=>{
+ const control=$('windowsStartup'),enabled=control.checked;control.disabled=true;
+ try{await nativeSaveWindowsStartup(enabled);$('saveStatus').textContent=enabled?'Molovox Labs will open when you sign in.':'Windows startup disabled.';}
+ catch(e){control.checked=!enabled;$('saveStatus').textContent='Could not change Windows startup: '+errorText(e);}
+ finally{control.disabled=false;}
+};
+async function initWindowsStartup(){
+ const control=$('windowsStartup');
+ try{control.checked=await nativeLoadWindowsStartup();control.disabled=false;}
+ catch(e){$('saveStatus').textContent='Could not read Windows startup: '+errorText(e);}
+}
+
 function wave(id,samples,color){
  const canvas=$(id);if(!canvas.clientWidth)return;
  const pen=canvas.getContext('2d'),ratio=window.devicePixelRatio||1,w=canvas.width=Math.max(1,Math.round(canvas.clientWidth*ratio)),h=canvas.height=Math.max(1,Math.round(canvas.clientHeight*ratio));
@@ -94,7 +106,7 @@ async function stop(reason='Listening paused. Devices released.'){
 async function start(){
  if(active||busy)return false;
  wantListening=true;
- const s=selections();if(!s.Inputs.length||!s.Outputs.length){setLive(false);message('Select a microphone and an output in Settings.');return false;}
+ const s=selections();if((!s.Inputs.length&&!patchGraph?.Enabled)||!s.Outputs.length){setLive(false);message('Select an output and either a microphone or enable Patch bay.');return false;}
  busy=true;$('pause').disabled=true;
  try{await queueSettings(()=>withLoading('Opening audio devices…',()=>nativeStart({...selections(),Options:options()}),true));busy=false;setLive(true);clearInterval(pollTimer);pollTimer=setInterval(poll,66);await poll();message('Listening. Device changes apply automatically.');return true;}
  catch(e){busy=false;setLive(false);message(errorText(e));return false;}
@@ -116,7 +128,7 @@ async function applyRouting(){
  if(!ready||routeApplying)return;
  if(busy){routeTimer=setTimeout(applyRouting,90);return;}
  routeApplying=true;
- try{do{routeDirty=false;await save();if(wantListening){if(active)await stop('Switching devices…');const s=selections();if(s.Inputs.length&&s.Outputs.length)await start();else message('Select a microphone and output to resume listening.');}}while(routeDirty);}
+ try{do{routeDirty=false;await save();if(wantListening){if(active)await stop('Switching devices…');const s=selections();if((s.Inputs.length||patchGraph?.Enabled)&&s.Outputs.length)await start();else message('Select an output and either a microphone or enable Patch bay to resume listening.');}}while(routeDirty);}
  finally{routeApplying=false;}
 }
 $('refresh').onclick=async()=>{try{fillDevices(await withLoading('Finding audio devices…',()=>nativeDevices()),snapshotPreferences());deviceChoiceChanged();}catch(e){message(errorText(e));}};
@@ -198,7 +210,7 @@ async function init(){
  const finishLoading=beginLoading('Opening your audio workspace…',true);
  try{
   await paintLoading();
-  preferences=await nativeLoadPreferences();initSoundboardView(preferences.SoundboardView);await initVST(preferences);const o=preferences.Options||{};$('boardDelay').checked=!!o.SoundboardDelay;
+  await initWindowsStartup();preferences=await nativeLoadPreferences();initSoundboardView(preferences.SoundboardView);await initVST(preferences);const o=preferences.Options||{};$('boardDelay').checked=!!o.SoundboardDelay;
   $('master').value=Math.round((o.Volume??1)*100);$('boardVolume').value=Math.round((o.BoardVolume??1)*100);$('monitorMic').checked=!!(o.MonitorMic||o.Enabled);$('autoListen').checked=preferences.AutoListen??true;$('globalKeys').checked=preferences.GlobalKeys??true;
   loadFilterModels(preferences);await refreshMIDI(preferences.MIDIInput||'');updateLabels();
   const missing=fillDevices(await nativeDevices(),preferences);

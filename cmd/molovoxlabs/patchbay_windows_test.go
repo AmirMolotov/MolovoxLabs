@@ -3,9 +3,45 @@
 package main
 
 import (
+	"encoding/json"
 	"math"
 	"testing"
 )
+
+func TestPatchSourceVolume(t *testing.T) {
+	for _, kind := range []string{"mic", "board", "clip"} {
+		for _, volume := range []*float32{nil, new(float32(0)), new(float32(.25)), new(float32(1))} {
+			graph := PatchBay{Enabled: true, Nodes: []PatchNode{{ID: "source", Kind: kind, ClipID: "sound", Volume: volume}, {ID: "out", Kind: "output"}}, Cables: []PatchCable{{From: "source", To: "out"}}}
+			data, err := json.Marshal(graph)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var loaded PatchBay
+			if err := json.Unmarshal(data, &loaded); err != nil {
+				t.Fatal(err)
+			}
+			program, err := compilePatch(loaded, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			gain := float32(1)
+			if volume != nil {
+				gain = *volume
+			}
+			voices := &boardVoices{Slots: [8]boardVoice{{ID: "sound"}}}
+			got := program.sample(&renderEndpoint{}, .4, voices, &[8]float32{.4}, &AudioOptions{MonitorMic: true, Volume: .5, BoardVolume: 1})
+			if math.Abs(float64(got-.2*gain)) > 1e-6 {
+				t.Fatalf("%s volume %v: got %v", kind, gain, got)
+			}
+		}
+	}
+	for _, value := range []float32{-.1, 1.1, float32(math.NaN()), float32(math.Inf(1))} {
+		graph := PatchBay{Enabled: true, Nodes: []PatchNode{{ID: "mic", Kind: "mic", Volume: &value}}}
+		if _, err := compilePatch(graph, nil); err == nil {
+			t.Fatalf("Accepted invalid source volume %v", value)
+		}
+	}
+}
 
 func boardEffectPatch() PatchBay {
 	return PatchBay{Enabled: true, Nodes: []PatchNode{

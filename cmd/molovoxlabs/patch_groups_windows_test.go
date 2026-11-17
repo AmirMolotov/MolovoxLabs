@@ -11,6 +11,7 @@ import (
 func TestPatchGroupsAndReusableTemplatesPersistWithParameters(t *testing.T) {
 	s := &appStore{root: t.TempDir()}
 	graph := boardEffectPatch()
+	graph.Nodes[1].Volume = new(float32(.35))
 	graph.Groups = []PatchGroup{{ID: "g", Name: "Voice rack", NodeIDs: []string{"board", "fx"}, X: -120, Y: 300, Collapsed: true}}
 	graph.Templates = []PatchTemplate{{ID: "saved", Name: "Voice rack", Nodes: graph.Nodes[1:3], Cables: []PatchCable{{From: "board", To: "fx"}}, Filters: []MicFilter{{ID: "gain", Kind: "gain", Enabled: true, GainDB: 6}}}}
 	if err := s.SavePreferences(Preferences{Options: AudioOptions{Patch: graph, Filters: graph.Templates[0].Filters}}); err != nil {

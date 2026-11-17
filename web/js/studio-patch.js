@@ -29,7 +29,7 @@ function syncPatchPreset(){
  const desired=defaultPatch(patchGraph.Preset,patchGraph.Enabled),old=patchGraph.Nodes;
  const key=n=>n.Kind==='effect'?'effect:'+n.FilterID:n.Kind==='clip'?'clip:'+n.ClipID:n.Kind;
  const mapping=new Map();
- for(const node of desired.Nodes){const previous=old.find(n=>key(n)===key(node));mapping.set(node.ID,previous?.ID||node.ID);if(previous){node.ID=previous.ID;node.X=previous.X;node.Y=previous.Y;}}
+ for(const node of desired.Nodes){const previous=old.find(n=>key(n)===key(node));mapping.set(node.ID,previous?.ID||node.ID);if(previous){node.ID=previous.ID;node.X=previous.X;node.Y=previous.Y;node.Volume=previous.Volume;}}
  desired.Cables=desired.Cables.map(c=>({From:mapping.get(c.From),To:mapping.get(c.To)}));patchGraph=desired;
 }
 function initPatch(p){const saved=p.Options?.Patch;patchGraph=saved?.Nodes?.length?structuredClone(saved):defaultPatch();if(!patchGraph.Version){patchGraph.Preset=inferPatchPreset(patchGraph);patchGraph.Version=1;}renderPatch();}
@@ -44,6 +44,7 @@ function patchOptions(){
 function patchName(node){
  if(node.Kind==='group')return node.Name;
  if(node.Kind==='mic')return 'Microphone mix';
+ if(node.Kind==='app')return node.AppPath?.split(/[\\/]/).pop()||'App audio';
  if(node.Kind==='clip')return library.Boards.flatMap(b=>b.Sounds).find(s=>s.ID===node.ClipID)?.Name||'Missing pad';
  if(node.Kind==='board')return node.BoardID?(library.Boards.find(b=>b.ID===node.BoardID)?.Name||'Missing board'):'All boards + video samplers';
  if(node.Kind==='effect'){const f=micFilters.find(f=>f.ID===node.FilterID);return f?filterTitle(f):'Missing effect';}
@@ -95,7 +96,7 @@ function patchCableAllowed(from,to){
 }
 function patchRawCableAllowed(from,to){
  if(from===to)return false;const a=patchGraph.Nodes.find(n=>n.ID===from),b=patchGraph.Nodes.find(n=>n.ID===to);
- if(!a||!b||a.Kind==='output'||b.Kind==='mic'||b.Kind==='board'||b.Kind==='clip')return false;
+ if(!a||!b||a.Kind==='output'||b.Kind==='mic'||b.Kind==='board'||b.Kind==='clip'||b.Kind==='app')return false;
  const visit=(id,seen=new Set())=>{if(id===from)return true;if(seen.has(id))return false;seen.add(id);return patchGraph.Cables.filter(c=>c.From===id).some(c=>visit(c.To,seen));};
  return !visit(to)&&!patchGraph.Cables.some(c=>c.From===from&&c.To===to);
 }
@@ -139,7 +140,7 @@ function renderPatch(){
  for(const node of patchGraph.Nodes){
   if(typeof patchNodeHidden==='function'&&patchNodeHidden(node.ID))continue;
   const card=document.createElement('article');const clip=library.Boards.flatMap(b=>b.Sounds).find(s=>s.ID===node.ClipID),isVideo=node.Kind==='board'&&library.Boards.some(b=>b.ID===node.BoardID&&b.Kind==='video');card.className='patch-node '+node.Kind+(isVideo?' video-source':'');card.style.left=node.X+'px';card.style.top=node.Y+'px';card.dataset.patchNode=node.ID;
-  const header=document.createElement('div');header.className='patch-node-header';const kind=document.createElement('span');kind.className='patch-node-kind';kind.textContent=node.Kind==='clip'?(clip?.Video?'VIDEO PAD':'SOUND PAD'):isVideo?'VIDEO SAMPLER':{mic:'INPUT',board:'SOUNDBOARD',effect:'EFFECT',output:'OUTPUT'}[node.Kind];
+  const header=document.createElement('div');header.className='patch-node-header';const kind=document.createElement('span');kind.className='patch-node-kind';kind.textContent=node.Kind==='clip'?(clip?.Video?'VIDEO PAD':'SOUND PAD'):isVideo?'VIDEO SAMPLER':{mic:'INPUT',app:'APP AUDIO',board:'SOUNDBOARD',effect:'EFFECT',output:'OUTPUT'}[node.Kind];
   const remove=document.createElement('button');remove.className='icon-close patch-remove';remove.setAttribute('aria-label','Remove '+patchName(node)+' from patch bay');remove.onclick=()=>{patchGraph.Preset='';patchGraph.Nodes=patchGraph.Nodes.filter(n=>n.ID!==node.ID);patchGraph.Cables=patchGraph.Cables.filter(c=>c.From!==node.ID&&c.To!==node.ID);commitPatch();};header.append(kind,remove);if(typeof decoratePatchGroupSelection==='function')decoratePatchGroupSelection(node,header,card);
   header.onpointerdown=e=>{
    if(e.button!==0||e.target.closest('button,input,select'))return;
@@ -149,8 +150,16 @@ function renderPatch(){
    header.setPointerCapture(e.pointerId);e.preventDefault();
   };
   const title=document.createElement('strong');title.textContent=patchName(node);card.append(header,title);
-  const note=document.createElement('small');note.textContent=node.Kind==='clip'?'Only this pad · separate effect chain':node.Kind==='mic'?($('monitorMic').checked?'Microphone → outputs is on':'Muted by the microphone switch'):node.Kind==='board'?(isVideo?'Video pad audio · keyboard / MIDI':'Clips + keyboard / MIDI triggers'):node.Kind==='output'?'Choose devices in Settings':'';if(note.textContent)card.append(note);
+  const note=document.createElement('small');note.textContent=node.Kind==='clip'?'Only this pad · separate effect chain':node.Kind==='mic'?($('monitorMic').checked?'Microphone → outputs is on':'Muted by the microphone switch'):node.Kind==='board'?(isVideo?'Video pad audio · keyboard / MIDI':'Clips + keyboard / MIDI triggers'):node.Kind==='output'?'Choose devices in Settings':'';if(node.Kind==='app'){note.dataset.appPath=node.AppPath;note.className='patch-app-status';note.textContent=patchAppState(node.AppPath);}if(note.textContent)card.append(note);
   if(node.Kind==='clip'){const select=document.createElement('select');select.className='clip-add-effect';select.setAttribute('aria-label','Add an effect to '+patchName(node));select.append(new Option('Add effect to this pad…',''));select.options[0].disabled=true;for(const [kind,name]of Object.entries(filterNames))if(filterDefaults[kind])select.add(new Option(name,kind));select.value='';select.onchange=()=>{const kind=select.value;select.value='';attachClipEffect(node.ID,kind);};card.append(select);}
+  if(['mic','board','clip','app'].includes(node.Kind)){
+   const label=document.createElement('label');label.className='patch-source-volume';
+   const text=document.createElement('span');text.textContent='Volume';
+   const slider=document.createElement('input');slider.type='range';slider.min='0';slider.max='100';slider.step='1';slider.value=Math.round((node.Volume??1)*100);slider.setAttribute('aria-label','Volume of '+patchName(node));
+   const value=document.createElement('output');value.textContent=slider.value+'%';
+   slider.oninput=()=>{const current=patchGraph.Nodes.find(n=>n.ID===node.ID);if(!current)return;current.Volume=Number(slider.value)/100;value.textContent=slider.value+'%';configure(true);};
+   label.append(text,slider,value);card.append(label);
+  }
   if(node.Kind==='effect'){
    const f=micFilters.find(f=>f.ID===node.FilterID),row=document.createElement('div');row.className='patch-node-actions';
    const enabled=document.createElement('button');enabled.className='patch-effect-toggle'+(f.Enabled?' on':'');enabled.textContent=f.Enabled?'On':'Bypassed';enabled.onclick=()=>{f.Enabled=!f.Enabled;renderFilters();configure();};
@@ -184,6 +193,26 @@ window.addEventListener('pointerup',e=>{
  if(patchDragging){patchDragging=null;sizePatchStage();scheduleSave();return;}
  if(patchPending){const port=document.elementFromPoint(e.clientX,e.clientY)?.closest('.patch-port.in');if(port)connectPatch(patchPending,port.dataset.node);}
 });
+let patchApps=[],patchAppsBusy=false,patchAppsTimer=null;
+function patchAppState(path){return patchApps.find(app=>app.Path.toLowerCase()===path.toLowerCase())?.Status||'Waiting for audio';}
+async function refreshPatchApps(){
+ if(typeof nativeAppAudioSources!=='function'||patchAppsBusy)return;
+ clearTimeout(patchAppsTimer);patchAppsBusy=true;
+ const picker=$('patchAppSource'),status=$('patchAppStatus');
+ try{
+  const result=await nativeAppAudioSources();patchApps=result.Apps||[];picker.disabled=!result.Supported;
+  status.textContent=result.Supported?'App audio updates automatically. Connect an app to your virtual output; choose its matching microphone in the receiving app. Original playback stays on.':'App audio requires Windows build 20348 or later.';
+  if(document.activeElement!==picker){picker.replaceChildren(new Option(patchApps.length?'Add app audio…':'No apps playing audio',''));for(const app of patchApps)picker.add(new Option(app.Name+' · '+app.Status,app.Path));}
+  for(const note of document.querySelectorAll('.patch-app-status'))note.textContent=patchAppState(note.dataset.appPath);
+ }catch(e){status.textContent='Could not find app audio: '+errorText(e);}
+ finally{patchAppsBusy=false;if(currentTab==='patch')patchAppsTimer=setTimeout(refreshPatchApps,2000);}
+}
+$('patchAppSource').onchange=()=>{
+ const path=$('patchAppSource').value;if(!path)return;$('patchAppSource').value='';
+ if(!patchApps.some(app=>app.Path===path))return;
+ addPatchNode(patchNode('app',{AppPath:path}));
+ patchStatus('Connect '+path.split(/[\\/]/).pop()+' to an effect or output. Enable Patch bay and resume listening to hear it.');
+};
 $('patchEnabled').onchange=()=>{patchGraph.Enabled=$('patchEnabled').checked;commitPatch();};
 $('patchSource').onchange=()=>{const choice=$('patchSource').value;if(!choice)return;if(choice.startsWith('clip:')){addPatchNode(patchNode('clip',{ClipID:choice.slice(5)},40,80+patchGraph.Nodes.length*30));return;}addPatchNode(patchNode(choice==='mic'?'mic':'board',choice==='mic'?{}:{BoardID:choice.slice(6)},40,80+patchGraph.Nodes.length*30));};
 $('patchEffect').onchange=()=>{
@@ -247,7 +276,6 @@ $('patchViewport').addEventListener?.('pointerdown',e=>{
  if(e.button!==0||patchDragging||patchPan)return;
  if(!patchSpace){if(background&&typeof beginPatchSelection==='function'){e.preventDefault();e.stopPropagation();if(patchPending)cancelPatchInteraction();beginPatchSelection(e);}return;}
  e.preventDefault();e.stopPropagation();patchSpaceUsed=true;
- if(patchPending)cancelPatchInteraction();
  const viewport=e.currentTarget;
  patchPan={viewport,pointerID:e.pointerId,x:e.clientX,y:e.clientY,left:patchCameraX,top:patchCameraY};
  viewport.classList.add('panning');viewport.setPointerCapture(e.pointerId);

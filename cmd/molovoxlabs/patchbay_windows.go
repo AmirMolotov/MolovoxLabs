@@ -5,11 +5,15 @@ package main
 import (
 	"errors"
 	"math"
+	"path/filepath"
+	"strings"
 )
 
 type PatchNode struct {
 	ID, Kind, FilterID, BoardID, DeviceID string
 	ClipID                                string
+	AppPath                               string   `json:",omitempty"`
+	Volume                                *float32 `json:",omitempty"`
 	X, Y                                  float64
 }
 type PatchCable struct{ From, To string }
@@ -37,7 +41,9 @@ type PatchBay struct {
 type patchStep struct {
 	kind, boardID, deviceID string
 	clipID                  string
+	appPath                 string
 	filter                  int
+	volume                  float32
 	inputs                  []int
 }
 type patchProgram struct {
@@ -57,7 +63,11 @@ func compilePatch(p PatchBay, filters []MicFilter) (*patchProgram, error) {
 	for i, f := range filters {
 		effectIDs[f.ID] = i
 	}
+	appPaths := map[string]bool{}
 	for i, node := range p.Nodes {
+		if node.Volume != nil && (math.IsNaN(float64(*node.Volume)) || *node.Volume < 0 || *node.Volume > 1) {
+			return nil, errors.New("Patch source volume must be between 0 and 1")
+		}
 		if node.ID == "" || len(node.ID) > 128 || math.IsNaN(node.X) || math.IsNaN(node.Y) || math.IsInf(node.X, 0) || math.IsInf(node.Y, 0) {
 			return nil, errors.New("Invalid patch node")
 		}
@@ -67,6 +77,14 @@ func compilePatch(p PatchBay, filters []MicFilter) (*patchProgram, error) {
 		index[node.ID] = i
 		switch node.Kind {
 		case "mic", "board", "output":
+		case "app":
+			if !filepath.IsAbs(node.AppPath) || len(node.AppPath) > 1024 || strings.ContainsRune(node.AppPath, 0) || !strings.EqualFold(filepath.Ext(node.AppPath), ".exe") {
+				return nil, errors.New("Choose an application from App audio")
+			}
+			appPaths[appAudioPath(node.AppPath)] = true
+			if len(appPaths) > 8 {
+				return nil, errors.New("Choose up to eight app audio sources")
+			}
 		case "clip":
 			if node.ClipID == "" || len(node.ClipID) > 128 {
 				return nil, errors.New("Choose a sound or video pad for the clip source")
@@ -91,7 +109,7 @@ func compilePatch(p PatchBay, filters []MicFilter) (*patchProgram, error) {
 		if !ok1 || !ok2 || from == to {
 			return nil, errors.New("Invalid cable endpoints")
 		}
-		if p.Nodes[from].Kind == "output" || p.Nodes[to].Kind == "mic" || p.Nodes[to].Kind == "board" || p.Nodes[to].Kind == "clip" {
+		if p.Nodes[from].Kind == "output" || p.Nodes[to].Kind == "mic" || p.Nodes[to].Kind == "board" || p.Nodes[to].Kind == "clip" || p.Nodes[to].Kind == "app" {
 			return nil, errors.New("Connect source/effect outputs to effect/output inputs")
 		}
 		key := [2]int{from, to}
@@ -139,7 +157,11 @@ func compilePatch(p PatchBay, filters []MicFilter) (*patchProgram, error) {
 	}
 	for _, original := range order {
 		node := p.Nodes[original]
-		step := patchStep{kind: node.Kind, boardID: node.BoardID, deviceID: node.DeviceID, clipID: node.ClipID, filter: effectIDs[node.FilterID]}
+		step := patchStep{kind: node.Kind, boardID: node.BoardID, deviceID: node.DeviceID, clipID: node.ClipID, appPath: appAudioPath(node.AppPath), filter: effectIDs[node.FilterID]}
+		step.volume = 1
+		if node.Volume != nil && (node.Kind == "mic" || node.Kind == "board" || node.Kind == "clip" || node.Kind == "app") {
+			step.volume = *node.Volume
+		}
 		for _, source := range inputs[original] {
 			step.inputs = append(step.inputs, positions[source])
 		}
@@ -163,6 +185,8 @@ func (p *patchProgram) sample(r *renderEndpoint, mic float32, sounds *boardVoice
 			x += values[source]
 		}
 		switch step.kind {
+		case "app":
+			x = r.appSample(step.appPath)
 		case "mic":
 			if o.MonitorMic {
 				x = mic
@@ -209,7 +233,7 @@ func (p *patchProgram) sample(r *renderEndpoint, mic float32, sounds *boardVoice
 				output += x
 			}
 		}
-		values[i] = x
+		values[i] = x * step.volume
 	}
 	return output * o.Volume
 }
