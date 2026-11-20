@@ -167,22 +167,23 @@ type captureEndpoint struct {
 	device *audio.Device
 }
 type renderEndpoint struct {
-	appSnapshot *appAudioSnapshot
-	appRings    [32]*sampleRing
-	appReaders  [32]ringReader
-	appSamples  [32]float32
-	ID          string
-	index       int
-	liveGains   [8]float32
-	published   [8]atomic.Uint64
-	filters     micFilterChain
-	soundIDs    [8]uint64
-	soundAt     [8]int
-	device      *audio.Device
-	readers     []ringReader
-	dsp         processor
-	toneSeen    uint64
-	toneLeft    int
+	appSnapshot      *appAudioSnapshot
+	appRings         [32]*sampleRing
+	appReaders       [32]ringReader
+	appSamples       [32]float32
+	instrumentSample float32
+	ID               string
+	index            int
+	liveGains        [8]float32
+	published        [8]atomic.Uint64
+	filters          micFilterChain
+	soundIDs         [8]uint64
+	soundAt          [8]int
+	device           *audio.Device
+	readers          []ringReader
+	dsp              processor
+	toneSeen         uint64
+	toneLeft         int
 }
 type nativeEngine struct {
 	appAudio       appAudioCapture
@@ -192,6 +193,7 @@ type nativeEngine struct {
 	samplerTap     atomic.Pointer[samplerAudioTap]
 	configMu       sync.Mutex
 	vst            vstRack
+	instruments    instrumentBank
 	outputCount    atomic.Int32
 	voices         atomic.Pointer[boardVoices]
 	soundSequence  atomic.Uint64
@@ -290,6 +292,9 @@ func (e *nativeEngine) Configure(o AudioOptions) error {
 		}
 		o.filterChains[i] = prepareFilterChain(o.Filters, old, nodes)
 	}
+	if err := e.instruments.configure(outputs); err != nil {
+		return err
+	}
 	e.vst.configure(o.Filters, outputs)
 	e.options.Store(&o)
 	if compiled != nil {
@@ -321,7 +326,7 @@ func (e *nativeEngine) Start(req StartRequest) error {
 	if e.running.Load() {
 		return errors.New("Stop the current session first")
 	}
-	if (len(req.Inputs) < 1 && !req.Options.Patch.Enabled) || len(req.Inputs) > 8 || len(req.Outputs) < 1 || len(req.Outputs) > 8 {
+	if (len(req.Inputs) < 1 && !req.Options.Patch.Enabled && !e.instruments.loaded()) || len(req.Inputs) > 8 || len(req.Outputs) < 1 || len(req.Outputs) > 8 {
 		return errors.New("Select 1–8 microphones and 1–8 outputs")
 	}
 	if err := e.initContext(); err != nil {
@@ -428,6 +433,7 @@ func (e *nativeEngine) render(r *renderEndpoint, output []byte, frames int, prim
 	r.prepareAppAudio(e.appAudio.current.Load())
 	transport := e.arrangement.Load()
 	rack := e.vst.current.Load()
+	instruments := e.instruments.rack.current.Load()
 	r.filters.vstVoice = r.index
 	for i := range r.filters.vstSlots {
 		r.filters.vstSlots[i] = nil
@@ -465,6 +471,12 @@ func (e *nativeEngine) render(r *renderEndpoint, output []byte, frames int, prim
 	missing := false
 	for frame := 0; frame < frames; frame++ {
 		r.nextAppAudio()
+		r.instrumentSample = 0
+		if instruments != nil {
+			for _, plugin := range instruments.playback {
+				r.instrumentSample += plugin.instrumentSample(r.index, &e.instruments)
+			}
+		}
 		x := float32(0)
 		for i, c := range e.captures {
 			v, ok := r.readers[i].next(&c.ring)
@@ -495,6 +507,7 @@ func (e *nativeEngine) render(r *renderEndpoint, output []byte, frames int, prim
 				y += processed * o.Volume
 			}
 			y += boardMix * o.BoardVolume * o.Volume
+			y += r.instrumentSample * o.Volume
 		}
 		if transport != nil && r.index < len(transport.streams) {
 			y += transport.streams[r.index].sample() * o.Volume
@@ -566,6 +579,7 @@ func (e *nativeEngine) stopLocked() {
 	}
 	e.renders = nil
 	e.vst.collectRetired()
+	e.instruments.rack.collectRetired()
 	e.captures = nil
 	for i := 0; i < scopeSize; i++ {
 		e.micScope[i].Store(0)
@@ -579,6 +593,7 @@ func (e *nativeEngine) Close() {
 	e.stopLocked()
 	e.appAudio.close()
 	e.vst.close()
+	e.instruments.rack.close()
 	if e.context != nil {
 		e.context.Uninit()
 		e.context = nil
@@ -598,7 +613,7 @@ func (e *nativeEngine) Snapshot() NativeSnapshot {
 				continue
 			}
 			published := e.renders[0].published[i].Load()
-			position := uint64(0)
+			position := uint64(v.Offset)
 			if published>>32 == v.Sequence {
 				position = published & 0xffffffff
 			}
@@ -705,6 +720,7 @@ func nativeMutedCaptureSmoke() map[string]interface{} {
 
 type boardVoice struct {
 	DelayFrames int
+	Offset      int
 	Loop        bool
 	BoardID     string
 	Sequence    uint64
@@ -728,7 +744,7 @@ func (r *renderEndpoint) boardSamples(sounds *boardVoices, clips *[8]float32) fl
 		}
 		if r.soundIDs[i] != v.Sequence {
 			r.soundIDs[i] = v.Sequence
-			r.soundAt[i] = -v.DelayFrames
+			r.soundAt[i] = v.Offset - v.DelayFrames
 		}
 		at := r.soundAt[i]
 		if at < 0 {
@@ -755,19 +771,26 @@ func (r *renderEndpoint) boardSamples(sounds *boardVoices, clips *[8]float32) fl
 	return mixed
 }
 func (e *nativeEngine) PlaySound(id string, samples []float32, boardIDs ...string) error {
-	return e.playSound(id, samples, false, 0, boardIDs...)
+	return e.playSound(id, samples, false, 0, 0, boardIDs...)
 }
-func (e *nativeEngine) PlayPreview(id string, samples []float32, board string, loop bool) error {
-	return e.playSound(id, samples, loop, 0, board)
+func (e *nativeEngine) PlayPreview(id string, samples []float32, board string, loop bool, offset ...int) error {
+	start := 0
+	if len(offset) > 0 {
+		start = offset[0]
+	}
+	if start < 0 || start >= len(samples) {
+		return errors.New("Preview start is outside the audio range")
+	}
+	return e.playSound(id, samples, loop, 0, start, board)
 }
 func (e *nativeEngine) PlaySoundboard(id string, samples []float32, board string) error {
 	delay := 0
 	if options := e.options.Load(); options != nil && options.SoundboardDelay {
 		delay = sampleRate / 2
 	}
-	return e.playSound(id, samples, false, delay, board)
+	return e.playSound(id, samples, false, delay, 0, board)
 }
-func (e *nativeEngine) playSound(id string, samples []float32, loop bool, delay int, boardIDs ...string) error {
+func (e *nativeEngine) playSound(id string, samples []float32, loop bool, delay, offset int, boardIDs ...string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if !e.running.Load() {
@@ -789,7 +812,7 @@ func (e *nativeEngine) playSound(id string, samples []float32, loop bool, delay 
 			if len(boardIDs) > 0 {
 				boardID = boardIDs[0]
 			}
-			next.Slots[i] = boardVoice{DelayFrames: delay, Loop: loop, BoardID: boardID, Sequence: e.soundSequence.Add(1), ID: id, Samples: samples, Started: time.Now().Add(time.Duration(delay) * time.Second / sampleRate)}
+			next.Slots[i] = boardVoice{DelayFrames: delay, Offset: offset, Loop: loop, BoardID: boardID, Sequence: e.soundSequence.Add(1), ID: id, Samples: samples, Started: time.Now().Add(time.Duration(delay) * time.Second / sampleRate)}
 			e.voices.Store(next)
 			return nil
 		}

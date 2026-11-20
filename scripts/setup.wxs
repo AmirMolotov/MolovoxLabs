@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:bal="http://schemas.microsoft.com/wix/BalExtension"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+  <Bundle Name="Molovox Labs" Version="$(var.Version)" Manufacturer="Molovox Labs"
+          UpgradeCode="00846CD1-4666-431D-8A6E-C6F43177313C" IconSourceFile="$(var.Root)\assets\molovox-labs.ico">
+    <BootstrapperApplicationRef Id="WixStandardBootstrapperApplication.RtfLargeLicense">
+      <bal:WixStandardBootstrapperApplication LicenseFile="$(var.Root)\scripts\installer-terms.rtf" />
+    </BootstrapperApplicationRef>
+    <bal:Condition Message="Molovox Labs requires x64 Windows 10 or later.">
+      VersionNT64 &gt;= v10.0 AND NativeMachine = 34404
+    </bal:Condition>
+    <bal:Condition Message="Review the setup terms before installing. For unattended setup, pass AcceptTerms=1.">
+      WixBundleUILevel = 4 OR AcceptTerms = 1 OR WixBundleInstalled
+    </bal:Condition>
+    <Variable Name="AcceptTerms" Type="numeric" Value="0" bal:Overridable="yes" />
+    <Variable Name="DefaultInstallFolder" Type="string" Value="[ProgramFiles64Folder]Molovox Labs" />
+    <Variable Name="InstallFolder" Type="string" Value="[DefaultInstallFolder]" bal:Overridable="yes" />
+    <util:RegistrySearch Id="HasPreviousInstallFolder" Root="HKLM" Key="SOFTWARE\MolovoxLabs"
+                         Value="InstallFolder" Variable="PreviousInstallFolderExists" Result="exists" Win64="yes" />
+    <util:RegistrySearch Id="PreviousInstallFolder" Root="HKLM" Key="SOFTWARE\MolovoxLabs"
+                         Value="InstallFolder" Variable="DefaultInstallFolder" Result="value" Win64="yes"
+                         After="HasPreviousInstallFolder" Condition="PreviousInstallFolderExists" />
+    <Chain>
+      <ExePackage Id="Prerequisites" DisplayName="Molovox Labs prerequisites" SourceFile="$(var.Stage)\InstallDependencies.exe"
+                  PerMachine="yes" Permanent="yes" Vital="yes" Compressed="yes">
+        <ExitCode Value="3010" Behavior="scheduleReboot" />
+      </ExePackage>
+      <MsiPackage Id="Application" SourceFile="$(var.Stage)\MolovoxLabs.msi" Visible="no" Vital="yes" Compressed="yes">
+        <MsiProperty Name="BUNDLEAPPROVED" Value="1" />
+        <MsiProperty Name="INSTALLFOLDER" Value="[InstallFolder]" />
+      </MsiPackage>
+    </Chain>
+  </Bundle>
+</Wix>

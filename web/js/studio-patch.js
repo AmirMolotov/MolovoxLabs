@@ -32,7 +32,7 @@ function syncPatchPreset(){
  for(const node of desired.Nodes){const previous=old.find(n=>key(n)===key(node));mapping.set(node.ID,previous?.ID||node.ID);if(previous){node.ID=previous.ID;node.X=previous.X;node.Y=previous.Y;node.Volume=previous.Volume;}}
  desired.Cables=desired.Cables.map(c=>({From:mapping.get(c.From),To:mapping.get(c.To)}));patchGraph=desired;
 }
-function initPatch(p){const saved=p.Options?.Patch;patchGraph=saved?.Nodes?.length?structuredClone(saved):defaultPatch();if(!patchGraph.Version){patchGraph.Preset=inferPatchPreset(patchGraph);patchGraph.Version=1;}renderPatch();}
+function initPatch(p,render=true){const saved=p.Options?.Patch;patchGraph=saved?.Nodes?.length?structuredClone(saved):defaultPatch();if(!patchGraph.Version){patchGraph.Preset=inferPatchPreset(patchGraph);patchGraph.Version=1;}if(render)renderPatch();}
 function patchOptions(){
  if(!patchGraph)return {Enabled:false,Nodes:[],Cables:[]};
  syncPatchPreset();
@@ -44,6 +44,7 @@ function patchOptions(){
 function patchName(node){
  if(node.Kind==='group')return node.Name;
  if(node.Kind==='mic')return 'Microphone mix';
+ if(node.Kind==='instrument')return 'Instruments';
  if(node.Kind==='app')return node.AppPath?.split(/[\\/]/).pop()||'App audio';
  if(node.Kind==='clip')return library.Boards.flatMap(b=>b.Sounds).find(s=>s.ID===node.ClipID)?.Name||'Missing pad';
  if(node.Kind==='board')return node.BoardID?(library.Boards.find(b=>b.ID===node.BoardID)?.Name||'Missing board'):'All boards + video samplers';
@@ -96,7 +97,7 @@ function patchCableAllowed(from,to){
 }
 function patchRawCableAllowed(from,to){
  if(from===to)return false;const a=patchGraph.Nodes.find(n=>n.ID===from),b=patchGraph.Nodes.find(n=>n.ID===to);
- if(!a||!b||a.Kind==='output'||b.Kind==='mic'||b.Kind==='board'||b.Kind==='clip'||b.Kind==='app')return false;
+ if(!a||!b||a.Kind==='output'||b.Kind==='mic'||b.Kind==='board'||b.Kind==='clip'||b.Kind==='app'||b.Kind==='instrument')return false;
  const visit=(id,seen=new Set())=>{if(id===from)return true;if(seen.has(id))return false;seen.add(id);return patchGraph.Cables.filter(c=>c.From===id).some(c=>visit(c.To,seen));};
  return !visit(to)&&!patchGraph.Cables.some(c=>c.From===from&&c.To===to);
 }
@@ -129,7 +130,7 @@ function sizePatchStage(){
 function renderPatch(){
  if(!patchGraph||patchDragging)return;patchOptions();$('patchEnabled').checked=patchGraph.Enabled;
  for(const [id,mode] of [['patchBoardPreset','board'],['patchMicPreset','mic']]){$(id).classList.toggle('is-selected',patchGraph.Preset===mode);$(id).setAttribute('aria-pressed',String(patchGraph.Preset===mode));}
- const source=$('patchSource');source.replaceChildren(new Option('Add a source…',''));source.options[0].disabled=true;source.add(new Option('Microphone mix','mic'));source.add(new Option('All boards + video samplers','board:'));for(const kind of ['audio','video']){const group=document.createElement('optgroup');group.label=kind==='video'?'Video samplers':'Soundboards';for(const b of library.Boards.filter(b=>(b.Kind==='video')===(kind==='video')))group.append(new Option(b.Name,'board:'+b.ID));source.append(group);}for(const board of library.Boards){if(!board.Sounds.length)continue;const group=document.createElement('optgroup');group.label=(board.Kind==='video'?'Video pads · ':'Sound pads · ')+board.Name;for(const sound of board.Sounds)group.append(new Option(sound.Name,'clip:'+sound.ID));source.append(group);}source.value='';
+ const source=$('patchSource');source.replaceChildren(new Option('Add a source…',''));source.options[0].disabled=true;source.add(new Option('Microphone mix','mic'));if(!patchGraph.Nodes.some(node=>node.Kind==='instrument'))source.add(new Option('Instruments','instrument'));source.add(new Option('All boards + video samplers','board:'));for(const kind of ['audio','video']){const group=document.createElement('optgroup');group.label=kind==='video'?'Video samplers':'Soundboards';for(const b of library.Boards.filter(b=>(b.Kind==='video')===(kind==='video')))group.append(new Option(b.Name,'board:'+b.ID));source.append(group);}for(const board of library.Boards){if(!board.Sounds.length)continue;const group=document.createElement('optgroup');group.label=(board.Kind==='video'?'Video pads · ':'Sound pads · ')+board.Name;for(const sound of board.Sounds)group.append(new Option(sound.Name,'clip:'+sound.ID));source.append(group);}source.value='';
  const effects=$('patchEffect');effects.replaceChildren(new Option('Add an effect…',''));effects.options[0].disabled=true;const used=new Set(patchGraph.Nodes.filter(n=>n.Kind==='effect').map(n=>n.FilterID));
  for(const [kind,name] of Object.entries(filterNames))effects.add(new Option(name,'new:'+kind));
  for(const f of micFilters)if(!used.has(f.ID))effects.add(new Option(filterTitle(f)+' (saved)',f.ID));
@@ -140,7 +141,7 @@ function renderPatch(){
  for(const node of patchGraph.Nodes){
   if(typeof patchNodeHidden==='function'&&patchNodeHidden(node.ID))continue;
   const card=document.createElement('article');const clip=library.Boards.flatMap(b=>b.Sounds).find(s=>s.ID===node.ClipID),isVideo=node.Kind==='board'&&library.Boards.some(b=>b.ID===node.BoardID&&b.Kind==='video');card.className='patch-node '+node.Kind+(isVideo?' video-source':'');card.style.left=node.X+'px';card.style.top=node.Y+'px';card.dataset.patchNode=node.ID;
-  const header=document.createElement('div');header.className='patch-node-header';const kind=document.createElement('span');kind.className='patch-node-kind';kind.textContent=node.Kind==='clip'?(clip?.Video?'VIDEO PAD':'SOUND PAD'):isVideo?'VIDEO SAMPLER':{mic:'INPUT',app:'APP AUDIO',board:'SOUNDBOARD',effect:'EFFECT',output:'OUTPUT'}[node.Kind];
+  const header=document.createElement('div');header.className='patch-node-header';const kind=document.createElement('span');kind.className='patch-node-kind';kind.textContent=node.Kind==='clip'?(clip?.Video?'VIDEO PAD':'SOUND PAD'):isVideo?'VIDEO SAMPLER':{mic:'INPUT',app:'APP AUDIO',instrument:'VST3 INSTRUMENTS',board:'SOUNDBOARD',effect:'EFFECT',output:'OUTPUT'}[node.Kind];
   const remove=document.createElement('button');remove.className='icon-close patch-remove';remove.setAttribute('aria-label','Remove '+patchName(node)+' from patch bay');remove.onclick=()=>{patchGraph.Preset='';patchGraph.Nodes=patchGraph.Nodes.filter(n=>n.ID!==node.ID);patchGraph.Cables=patchGraph.Cables.filter(c=>c.From!==node.ID&&c.To!==node.ID);commitPatch();};header.append(kind,remove);if(typeof decoratePatchGroupSelection==='function')decoratePatchGroupSelection(node,header,card);
   header.onpointerdown=e=>{
    if(e.button!==0||e.target.closest('button,input,select'))return;
@@ -152,7 +153,7 @@ function renderPatch(){
   const title=document.createElement('strong');title.textContent=patchName(node);card.append(header,title);
   const note=document.createElement('small');note.textContent=node.Kind==='clip'?'Only this pad · separate effect chain':node.Kind==='mic'?($('monitorMic').checked?'Microphone → outputs is on':'Muted by the microphone switch'):node.Kind==='board'?(isVideo?'Video pad audio · keyboard / MIDI':'Clips + keyboard / MIDI triggers'):node.Kind==='output'?'Choose devices in Settings':'';if(node.Kind==='app'){note.dataset.appPath=node.AppPath;note.className='patch-app-status';note.textContent=patchAppState(node.AppPath);}if(note.textContent)card.append(note);
   if(node.Kind==='clip'){const select=document.createElement('select');select.className='clip-add-effect';select.setAttribute('aria-label','Add an effect to '+patchName(node));select.append(new Option('Add effect to this pad…',''));select.options[0].disabled=true;for(const [kind,name]of Object.entries(filterNames))if(filterDefaults[kind])select.add(new Option(name,kind));select.value='';select.onchange=()=>{const kind=select.value;select.value='';attachClipEffect(node.ID,kind);};card.append(select);}
-  if(['mic','board','clip','app'].includes(node.Kind)){
+  if(['mic','board','clip','app','instrument'].includes(node.Kind)){
    const label=document.createElement('label');label.className='patch-source-volume';
    const text=document.createElement('span');text.textContent='Volume';
    const slider=document.createElement('input');slider.type='range';slider.min='0';slider.max='100';slider.step='1';slider.value=Math.round((node.Volume??1)*100);slider.setAttribute('aria-label','Volume of '+patchName(node));
@@ -214,7 +215,7 @@ $('patchAppSource').onchange=()=>{
  patchStatus('Connect '+path.split(/[\\/]/).pop()+' to an effect or output. Enable Patch bay and resume listening to hear it.');
 };
 $('patchEnabled').onchange=()=>{patchGraph.Enabled=$('patchEnabled').checked;commitPatch();};
-$('patchSource').onchange=()=>{const choice=$('patchSource').value;if(!choice)return;if(choice.startsWith('clip:')){addPatchNode(patchNode('clip',{ClipID:choice.slice(5)},40,80+patchGraph.Nodes.length*30));return;}addPatchNode(patchNode(choice==='mic'?'mic':'board',choice==='mic'?{}:{BoardID:choice.slice(6)},40,80+patchGraph.Nodes.length*30));};
+$('patchSource').onchange=()=>{const choice=$('patchSource').value;if(!choice)return;if(choice==='instrument'){addPatchNode(patchNode('instrument',{},40,80+patchGraph.Nodes.length*30));return;}if(choice.startsWith('clip:')){addPatchNode(patchNode('clip',{ClipID:choice.slice(5)},40,80+patchGraph.Nodes.length*30));return;}addPatchNode(patchNode(choice==='mic'?'mic':'board',choice==='mic'?{}:{BoardID:choice.slice(6)},40,80+patchGraph.Nodes.length*30));};
 $('patchEffect').onchange=()=>{
  const id=$('patchEffect').value;if(!id)return;$('patchEffect').value='';
  const position=placePatchNode(patchNode('effect',{},350,120+patchGraph.Nodes.length*25)),x=position.X,y=position.Y;
@@ -264,13 +265,13 @@ function endPatchPan(){
  if(viewport.hasPointerCapture(pointerID))viewport.releasePointerCapture(pointerID);
 }
 document.addEventListener('keydown',e=>{
- if(e.code!=='Space'||e.ctrlKey||e.altKey||e.shiftKey||e.metaKey||currentTab!=='patch'||document.querySelector('dialog[open]')||e.target.closest?.('input,textarea,select,[contenteditable]'))return;
+ if(e.code!=='Space'||e.ctrlKey||e.altKey||e.shiftKey||e.metaKey||currentTab!=='patch'||document.querySelector('dialog[open]')||e.target.closest?.('input:not([type=checkbox]):not([type=range]),textarea,select,[contenteditable]'))return;
  if(!patchSpace)patchSpaceUsed=false;
- if(patchSpaceUsed||!e.target.closest?.('button,summary,[role=button]'))e.preventDefault();
+ if(patchSpaceUsed||!e.target.closest?.('button,summary,[role=button],input[type=checkbox]'))e.preventDefault();
  setPatchSpace(true);
 },true);
 document.addEventListener('keyup',e=>{if(e.code==='Space'&&patchSpace){if(patchSpaceUsed)e.preventDefault();setPatchSpace(false);}},true);
-window.addEventListener('blur',()=>{if(patchSpace)setPatchSpace(false);endPatchPan();});
+window.addEventListener('blur',()=>{if(patchSpace)setPatchSpace(false);endPatchPan();if(patchDragging)cancelPatchInteraction();});
 $('patchViewport').addEventListener?.('pointerdown',e=>{
  const background=e.target===$('patchViewport')||e.target===$('patchStage')||e.target===$('patchWires');
  if(e.button!==0||patchDragging||patchPan)return;
@@ -280,7 +281,10 @@ $('patchViewport').addEventListener?.('pointerdown',e=>{
  patchPan={viewport,pointerID:e.pointerId,x:e.clientX,y:e.clientY,left:patchCameraX,top:patchCameraY};
  viewport.classList.add('panning');viewport.setPointerCapture(e.pointerId);
 },true);
-$('patchViewport').addEventListener?.('lostpointercapture',e=>{if(patchPan&&patchPan.pointerID===e.pointerId)endPatchPan();});
+document.addEventListener('lostpointercapture',e=>{
+ if(patchPan?.pointerID===e.pointerId)endPatchPan();
+ if(patchDragging?.pointerID===e.pointerId)cancelPatchInteraction();
+},true);
 
 function patchViewBounds(){
  const cards=[...$('patchNodes').children];

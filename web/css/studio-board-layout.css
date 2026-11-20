@@ -60,3 +60,4 @@
 #board.compact-soundboard .sound-pad-menu .pad-group-select{margin:6px 0 0;width:100%;min-width:0;max-width:none;height:28px;min-height:28px;padding:4px 26px 4px 9px;border-radius:999px;background-position:right 8px center;background-size:11px;font-size:10px}
 .board-view-tools .board-delay-toggle{margin:0;font-size:11px;white-space:nowrap;color:#a8c1ac}
 .sound-pad.is-queued{border-color:#d9c589}.sound-pad.is-queued .play-icon{background:#d9c58922;color:#e4d59c}.sound-pad.is-queued .clip-time{color:#e4d59c}
+.export-board-choices{display:grid;gap:8px;max-height:42vh;overflow:auto;padding:4px}.export-board-choices label{display:flex;align-items:center;gap:8px}.export-board-choices fieldset{border:1px solid #ffffff28;border-radius:8px;margin:0;padding:8px 12px}.export-group-pads{display:grid;gap:4px;margin:6px 0 0 22px}.export-group-pads label:has(input:disabled){opacity:.65}.export-selection-actions{display:flex;gap:10px;margin-bottom:8px}

@@ -4,10 +4,17 @@ let samplerRecording=null,samplerFrameTimer=null,samplerActive=[],samplerPlaybac
 const samplerURL=(kind,id)=>new URL('sampler/'+kind+'/'+encodeURIComponent(id),location.href).href;
 const samplerSeconds=value=>{const n=Math.max(0,Number(value)||0);return Math.floor(n/60)+':'+(n%60).toFixed(1).padStart(4,'0');};
 function samplerBoards(){return library.Boards.filter(b=>b.Kind==='video');}
-async function initSampler(p){$('samplerRecordingMode').value=['single','layered'].includes(p.SamplerRecordingMode)?p.SamplerRecordingMode:'layered';await nativeSetPlaybackMode($('samplerRecordingMode').value);const state=await nativeSamplerLibrary();samplerSources=state.Sources||[];samplerRecordings=state.Recordings||[];library=state.Library;renderSamplerLibrary(p.SamplerBoardID);renderSamplerSources();renderSamplerRecordings();
- if(!samplerFrameTimer)samplerFrameTimer=setInterval(drawSamplerStage,1000/30);
+function initSamplerPreferences(p){$('samplerRecordingMode').value=['single','layered'].includes(p.SamplerRecordingMode)?p.SamplerRecordingMode:'layered';return nativeSetPlaybackMode($('samplerRecordingMode').value);}
+let samplerLoading;
+function initSampler(p){
+ if(!samplerLoading)samplerLoading=withLoading('Loading video and recordings…',async()=>{
+  const state=await nativeSamplerLibrary();samplerSources=state.Sources||[];samplerRecordings=state.Recordings||[];library=state.Library;renderSamplerLibrary(p.SamplerBoardID);renderSamplerSources();renderSamplerRecordings();
+  if(!samplerFrameTimer)samplerFrameTimer=setInterval(()=>{if(samplerRecording||currentTab==='sampler'||currentTab==='recording')drawSamplerStage();},1000/30);
+ },true).catch(e=>{samplerLoading=null;message('Could not load video and recordings: '+errorText(e));});
+ else renderSamplerLibrary();
+ return samplerLoading;
 }
-function renderSamplerLibrary(preferred){const select=$('samplerBoard');const previous=preferred||select.value;select.replaceChildren();for(const board of samplerBoards())select.add(new Option(board.Name,board.ID));if(samplerBoards().some(b=>b.ID===previous))select.value=previous;renderSamplerBoard();refreshSamplerRecordOutputs();}
+function renderSamplerLibrary(preferred,render=true){const select=$('samplerBoard');const previous=preferred||select.value;select.replaceChildren();for(const board of samplerBoards())select.add(new Option(board.Name,board.ID));if(samplerBoards().some(b=>b.ID===previous))select.value=previous;if(render){renderSamplerBoard();refreshSamplerRecordOutputs();}}
 function renderSamplerSources(){const select=$('samplerSource');const previous=samplerSource?.ID||select.value;select.replaceChildren(new Option('Choose a source video…',''));for(const source of samplerSources.filter(source=>source.Kind!=='audio'))select.add(new Option(source.Name,source.ID));if(samplerSources.some(s=>s.ID===previous))select.value=previous;}
 function refreshSamplerRecordOutputs(){const select=$('samplerRecordOutput'),previous=select.value;select.replaceChildren();for(const id of selections().Outputs){const device=devices?.Outputs?.find(d=>d.ID===id);select.add(new Option(device?.Name||'Selected output',id));}if([...select.options].some(option=>option.value===previous))select.value=previous;}
 async function reloadSampler(){const state=await nativeSamplerLibrary();samplerSources=state.Sources||[];samplerRecordings=state.Recordings||[];library=state.Library;renderLibrary($('boardSelect').value);renderSamplerLibrary();renderSamplerSources();renderSamplerRecordings();}

@@ -8,6 +8,7 @@
 #include "pluginterfaces/vst/ivstaudioprocessor.h"
 #include "pluginterfaces/vst/ivsteditcontroller.h"
 #include "pluginterfaces/vst/ivsthostapplication.h"
+#include "pluginterfaces/vst/ivstevents.h"
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 #include "pluginterfaces/vst/ivstprocesscontext.h"
 #include "pluginterfaces/vst/vstspeaker.h"
@@ -16,6 +17,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstring>
+#include <deque>
 #include <functional>
 #include <future>
 #include <map>
@@ -80,9 +82,66 @@ public:FIXED_REF
  tresult PLUGIN_API createInstance(TUID cid,TUID id,void** o) override{*o=nullptr;FUnknown* object=nullptr;if(iidIs<IMessage>(cid))object=new Message;else if(iidIs<IAttributeList>(cid))object=new Attributes;if(!object)return kNoInterface;auto r=object->queryInterface(id,o);object->release();return r;}
 } host;
 
-DWORD uiThreadID=0;std::once_flag uiStarted;
-void startUI(){std::call_once(uiStarted,[]{std::promise<void> ready;auto future=ready.get_future();std::thread([&ready]{CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);MSG msg;PeekMessageW(&msg,nullptr,0,0,PM_NOREMOVE);uiThreadID=GetCurrentThreadId();ready.set_value();while(GetMessageW(&msg,nullptr,0,0)>0){if(msg.message==WM_APP+44){auto task=(std::function<void()>*)msg.lParam;(*task)();}else{TranslateMessage(&msg);DispatchMessageW(&msg);}}CoUninitialize();}).detach();future.get();});}
-template<class F> auto onUI(F fn)->decltype(fn()){startUI();if(GetCurrentThreadId()==uiThreadID)return fn();std::packaged_task<decltype(fn())()> task(fn);auto result=task.get_future();std::function<void()> call=[&]{task();};if(!PostThreadMessageW(uiThreadID,WM_APP+44,0,(LPARAM)&call))throw std::runtime_error("VST UI thread unavailable");return result.get();}
+DWORD uiThreadID=0;
+HANDLE uiTaskEvent=nullptr;
+std::once_flag uiStarted;
+std::mutex uiTaskMutex;
+std::deque<std::function<void()>> uiTasks;
+
+void startUI(){
+ std::call_once(uiStarted,[]{
+  std::promise<HANDLE> ready;
+  auto future=ready.get_future();
+  std::thread([ready=std::move(ready)]() mutable{
+   const auto com=CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
+   uiThreadID=GetCurrentThreadId();
+   const auto wake=CreateEventW(nullptr,FALSE,FALSE,nullptr);
+   ready.set_value(wake);
+   MSG msg{};
+   // Signal work outside the message queue so a plugin's modal loop cannot consume the wakeup.
+   while(wake){
+    const auto result=MsgWaitForMultipleObjectsEx(1,&wake,INFINITE,QS_ALLINPUT,MWMO_INPUTAVAILABLE);
+    if(result==WAIT_OBJECT_0){
+     for(;;){
+      std::unique_lock<std::mutex> lock(uiTaskMutex);
+      if(uiTasks.empty())break;
+      auto task=std::move(uiTasks.front());
+      uiTasks.pop_front();
+      lock.unlock();
+      task();
+     }
+    }else if(result==WAIT_OBJECT_0+1){
+     if(!PeekMessageW(&msg,nullptr,0,0,PM_REMOVE))continue;
+     if(msg.message==WM_QUIT)break;
+     TranslateMessage(&msg);
+     DispatchMessageW(&msg);
+    }else{
+     break;
+    }
+   }
+   if(wake)CloseHandle(wake);
+   if(SUCCEEDED(com))CoUninitialize();
+  }).detach();
+  uiTaskEvent=future.get();
+ });
+ if(!uiTaskEvent)throw std::runtime_error("VST UI thread unavailable");
+}
+
+template<class F> auto onUI(F fn)->decltype(fn()){
+ startUI();
+ if(GetCurrentThreadId()==uiThreadID)return fn();
+ auto task=std::make_shared<std::packaged_task<decltype(fn())()>>(std::move(fn));
+ auto result=task->get_future();
+ {
+  std::lock_guard<std::mutex> lock(uiTaskMutex);
+  uiTasks.push_back([task]{(*task)();});
+  if(!SetEvent(uiTaskEvent)){
+   uiTasks.pop_back();
+   throw std::runtime_error("VST UI thread unavailable");
+  }
+ }
+ return result.get();
+}
 
 struct Module {
  HMODULE dll=nullptr;IPluginFactory* factory=nullptr;
@@ -128,12 +187,30 @@ struct Handler:public IComponentHandler,public IComponentHandler2 {
  tresult PLUGIN_API startGroupEdit() override{return kResultOk;}
  tresult PLUGIN_API finishGroupEdit() override{return kResultOk;}
 };
+struct NoteEvents:public IEventList {
+ const uint32* notes=nullptr;int32 count=0;FIXED_REF
+ tresult PLUGIN_API queryInterface(const TUID iid,void** o) override {
+  *o=nullptr;if(!iidIs<FUnknown>(iid)&&!iidIs<IEventList>(iid))return kNoInterface;
+  *o=(IEventList*)this;return kResultOk;
+ }
+ int32 PLUGIN_API getEventCount() override{return count;}
+ tresult PLUGIN_API getEvent(int32 index,Event& event) override {
+  if(index<0||index>=count)return kResultFalse;
+  const auto note=notes[index];const auto channel=int16((note>>7)&15),pitch=int16(note&127);
+  const float velocity=float((note>>11)&127)/127.f;
+  event={};event.flags=Event::kIsLive;
+  if(velocity>0){event.type=Event::kNoteOnEvent;event.noteOn={channel,pitch,0,velocity,0,-1};}
+  else{event.type=Event::kNoteOffEvent;event.noteOff={channel,pitch,0,-1,0};}
+  return kResultOk;
+ }
+ tresult PLUGIN_API addEvent(Event&) override{return kNotImplemented;}
+};
 struct Instance {
  IComponent* component=nullptr;IAudioProcessor* processor=nullptr;IEditController* controller=nullptr;bool separate=false,initialized=false,active=false,processing=false;
  IConnectionPoint* componentConnection=nullptr;IConnectionPoint* controllerConnection=nullptr;
  Changes changes;std::vector<double> previous;
  float input[2][blockSize]{},output[2][blockSize]{};float* inPtrs[2]{input[0],input[1]};float* outPtrs[2]{output[0],output[1]};
- AudioBusBuffers inBus,outBus;ProcessContext context{};int inputChannels=0,outputChannels=0;int64 frames=0;
+ AudioBusBuffers inBus,outBus;std::vector<AudioBusBuffers> auxOutputs;ProcessContext context{};int inputChannels=0,outputChannels=0;int64 frames=0;
  ~Instance(){if(processing)processor->setProcessing(false);if(active)component->setActive(false);if(componentConnection&&controllerConnection){componentConnection->disconnect(controllerConnection);controllerConnection->disconnect(componentConnection);}release(componentConnection);release(controllerConnection);if(controller){controller->setComponentHandler(nullptr);if(separate)controller->terminate();}release(controller);release(processor);if(component&&initialized)component->terminate();release(component);}
 };
 
@@ -158,7 +235,7 @@ void restoreState(Instance& i,const unsigned char* data,int length){
  Stream stream;stream.bytes.assign(data+4,data+4+n);if(i.component->setState(&stream)!=kResultOk&&n)throw std::runtime_error("Plugin could not restore its saved state");stream.pos=0;if(i.controller)i.controller->setComponentState(&stream);
  if(i.controller&&(int)n+4<length){Stream cs;cs.bytes.assign(data+4+n,data+length);i.controller->setState(&cs);}
 }
-std::unique_ptr<Instance> createInstance(Group& g,const TUID cid,const unsigned char* state,int stateSize,bool primary){
+std::unique_ptr<Instance> createInstance(Group& g,const TUID cid,const unsigned char* state,int stateSize,bool primary,bool instrument){
  auto p=std::make_unique<Instance>();
  if(g.module->factory->createInstance(cid,IComponent::iid,(void**)&p->component)!=kResultOk||!p->component)throw std::runtime_error("Cannot create plugin processor");
  p->component->setIoMode(kSimple);
@@ -168,14 +245,24 @@ std::unique_ptr<Instance> createInstance(Group& g,const TUID cid,const unsigned 
  if(!p->controller){TUID controllerID;if(p->component->getControllerClassId(controllerID)==kResultOk&&g.module->factory->createInstance(controllerID,IEditController::iid,(void**)&p->controller)==kResultOk&&p->controller){p->separate=true;if(p->controller->initialize(&host)!=kResultOk)throw std::runtime_error("Plugin controller initialization failed");}}
  if(p->controller){if(primary)p->controller->setComponentHandler(&g.handler);p->componentConnection=query<IConnectionPoint>(p->component);p->controllerConnection=query<IConnectionPoint>(p->controller);if(p->separate&&p->componentConnection&&p->controllerConnection){p->componentConnection->connect(p->controllerConnection);p->controllerConnection->connect(p->componentConnection);}}
  int ins=p->component->getBusCount(kAudio,kInput),outs=p->component->getBusCount(kAudio,kOutput);
- if(ins<1||outs<1)throw std::runtime_error("Choose an audio effect with an audio input and output; instruments are unsupported");
- // Main bus only. Extra audio and all MIDI buses remain inactive.
- for(int d=0;d<2;d++){auto direction=d==0?kInput:kOutput;int n=p->component->getBusCount(kAudio,direction);for(int j=0;j<n;j++)p->component->activateBus(kAudio,direction,j,j==0);int events=p->component->getBusCount(kEvent,direction);for(int j=0;j<events;j++)p->component->activateBus(kEvent,direction,j,false);}
+ if(instrument?(ins!=0||p->component->getBusCount(kEvent,kInput)<1):ins!=1)
+  throw std::runtime_error(instrument?"Choose a VST3 instrument with a MIDI input and no audio input":"Choose a VST3 effect with one audio input");
+ if(outs<1||(!instrument&&outs!=1))throw std::runtime_error("Plugin needs a main audio output");
+ for(int d=0;d<2;d++){
+  auto direction=d==0?kInput:kOutput;
+  for(int j=0;j<p->component->getBusCount(kAudio,direction);j++)p->component->activateBus(kAudio,direction,j,j==0);
+  for(int j=0;j<p->component->getBusCount(kEvent,direction);j++)p->component->activateBus(kEvent,direction,j,instrument&&d==0&&j==0);
+ }
  SpeakerArrangement stereo=SpeakerArr::kStereo;
- if(ins==1&&outs==1)p->processor->setBusArrangements(&stereo,1,&stereo,1);
- BusInfo input{},output{};p->component->getBusInfo(kAudio,kInput,0,input);p->component->getBusInfo(kAudio,kOutput,0,output);
- if(input.channelCount<1||input.channelCount>2||output.channelCount<1||output.channelCount>2||ins!=1||outs!=1)throw std::runtime_error("This host currently supports one mono/stereo input bus and one mono/stereo output bus");
+ if(outs==1)p->processor->setBusArrangements(instrument?nullptr:&stereo,ins,&stereo,1);
+ BusInfo input{},output{};
+ if(ins)p->component->getBusInfo(kAudio,kInput,0,input);
+ p->component->getBusInfo(kAudio,kOutput,0,output);
+ if((ins&&(input.channelCount<1||input.channelCount>2))||output.channelCount<1||output.channelCount>2)
+  throw std::runtime_error("The main audio buses must be mono or stereo");
  p->inputChannels=input.channelCount;p->outputChannels=output.channelCount;
+ // Keep inactive auxiliary output entries in the ProcessData array.
+ p->auxOutputs.resize(outs);
  if(stateSize)restoreState(*p,state,stateSize);
  else if(p->controller){Stream stream;if(p->component->getState(&stream)==kResultOk){stream.pos=0;p->controller->setComponentState(&stream);}}
  ProcessSetup setup{kRealtime,kSample32,blockSize,48000.};if(p->processor->setupProcessing(setup)!=kResultOk)throw std::runtime_error("Plugin rejected the audio format");
@@ -188,9 +275,17 @@ std::unique_ptr<Instance> createInstance(Group& g,const TUID cid,const unsigned 
 LRESULT CALLBACK editorProc(HWND w,UINT msg,WPARAM wp,LPARAM lp){auto g=(Group*)GetWindowLongPtrW(w,GWLP_USERDATA);if(msg==WM_NCCREATE){g=(Group*)((CREATESTRUCTW*)lp)->lpCreateParams;SetWindowLongPtrW(w,GWLP_USERDATA,(LONG_PTR)g);}if(msg==WM_CLOSE&&g){g->closeEditor();return 0;}return DefWindowProcW(w,msg,wp,lp);}
 
 #define EXPORT extern "C" __declspec(dllexport)
-EXPORT int ql_scan(const char* path,char* out,int cap){try{auto json=onUI([&]{Module m(path);PFactoryInfo vendor{};m.factory->getFactoryInfo(&vendor);auto f2=query<IPluginFactory2>(m.factory);std::string r="[";bool first=true;for(int i=0;i<m.factory->countClasses();i++){PClassInfo info{};if(m.factory->getClassInfo(i,&info)!=kResultOk||strcmp(info.category,kVstAudioEffectClass))continue;std::string sub;PClassInfo2 info2{};if(f2&&f2->getClassInfo2(i,&info2)==kResultOk)sub=info2.subCategories;if(sub.find("Instrument")!=std::string::npos)continue;if(!first)r+=",";first=false;r+="{\"ClassID\":"+quote(classHex(info.cid))+",\"Name\":"+quote(info.name)+",\"Vendor\":"+quote(vendor.vendor)+",\"Category\":"+quote(sub)+"}";}release(f2);return r+"]";});copyText(out,cap,json);return 1;}catch(const std::exception& e){copyText(out,cap,e.what());return 0;}}
-EXPORT Group* ql_open(const char* path,const char* classID,const unsigned char* state,int stateSize,int voices,char* error,int cap){try{return onUI([&]{if(voices<1||voices>8)throw std::runtime_error("Invalid output count");TUID cid;if(!parseClass(classID,cid))throw std::runtime_error("Invalid VST3 class ID");auto g=std::make_unique<Group>();g->module=sharedModule(path);auto first=createInstance(*g,cid,state,stateSize,true);auto c=first->controller;if(c){int n=c->getParameterCount();if(n<0||n>16384)throw std::runtime_error("Unsupported plugin parameter count");for(int i=0;i<n;i++){ParameterInfo info{};if(c->getParameterInfo(i,info)==kResultOk)g->parameters.push_back(info);}}g->values.reset(new std::atomic<double>[g->parameters.size()]);for(size_t i=0;i<g->parameters.size();i++)g->values[i].store(c->getParamNormalized(g->parameters[i].id));g->voices.push_back(std::move(first));for(int i=1;i<voices;i++)g->voices.push_back(createInstance(*g,cid,state,stateSize,false));for(auto& instance:g->voices){instance->changes.setup((int)g->parameters.size());instance->previous.assign(g->parameters.size(),-1);for(size_t i=0;i<g->parameters.size();i++)instance->changes.queues[i].id=g->parameters[i].id;}return g.release();});}catch(const std::exception& e){copyText(error,cap,e.what());return nullptr;}}
-EXPORT int ql_process(Group* g,int voice,const float* input,float* output,int n){if(!g||voice<0||voice>=(int)g->voices.size()||n!=blockSize)return 0;auto& p=*g->voices[voice];for(int c=0;c<p.inputChannels;c++)memcpy(p.input[c],input,n*sizeof(float));for(auto& channel:p.output)memset(channel,0,sizeof(channel));p.changes.count=0;for(size_t i=0;i<g->parameters.size();i++){double value=g->values[i].load(std::memory_order_relaxed);if(value!=p.previous[i]){p.previous[i]=value;p.changes.queues[i].value=value;p.changes.changed[p.changes.count++]=(int)i;}}p.inBus.silenceFlags=0;p.outBus.silenceFlags=0;p.context.projectTimeSamples=p.frames;p.context.projectTimeMusic=p.frames/48000.*2;ProcessData data;data.processMode=kRealtime;data.symbolicSampleSize=kSample32;data.numSamples=n;data.numInputs=data.numOutputs=1;data.inputs=&p.inBus;data.outputs=&p.outBus;data.inputParameterChanges=&p.changes;data.processContext=&p.context;auto result=p.processor->process(data);p.frames+=n;if(result!=kResultOk)return 0;for(int i=0;i<n;i++){float v=p.output[0][i];if(p.outputChannels==2)v=.5f*(v+p.output[1][i]);output[i]=std::isfinite(v)?v:0;}return 1;}
+EXPORT int ql_scan(const char* path,char* out,int cap){try{auto json=onUI([&]{Module m(path);PFactoryInfo vendor{};m.factory->getFactoryInfo(&vendor);auto f2=query<IPluginFactory2>(m.factory);std::string r="[";bool first=true;for(int i=0;i<m.factory->countClasses();i++){PClassInfo info{};if(m.factory->getClassInfo(i,&info)!=kResultOk||strcmp(info.category,kVstAudioEffectClass))continue;std::string sub;PClassInfo2 info2{};if(f2&&f2->getClassInfo2(i,&info2)==kResultOk)sub=info2.subCategories;if(!first)r+=",";first=false;r+="{\"ClassID\":"+quote(classHex(info.cid))+",\"Name\":"+quote(info.name)+",\"Vendor\":"+quote(vendor.vendor)+",\"Category\":"+quote(sub)+"}";}release(f2);return r+"]";});copyText(out,cap,json);return 1;}catch(const std::exception& e){copyText(out,cap,e.what());return 0;}}
+EXPORT Group* ql_open(const char* path,const char* classID,const unsigned char* state,int stateSize,int voices,char* error,int cap,int instrument){try{return onUI([&]{if(voices<1||voices>8)throw std::runtime_error("Invalid output count");TUID cid;if(!parseClass(classID,cid))throw std::runtime_error("Invalid VST3 class ID");auto g=std::make_unique<Group>();g->module=sharedModule(path);auto first=createInstance(*g,cid,state,stateSize,true,instrument!=0);auto c=first->controller;if(c){int n=c->getParameterCount();if(n<0||n>16384)throw std::runtime_error("Unsupported plugin parameter count");for(int i=0;i<n;i++){ParameterInfo info{};if(c->getParameterInfo(i,info)==kResultOk)g->parameters.push_back(info);}}g->values.reset(new std::atomic<double>[g->parameters.size()]);for(size_t i=0;i<g->parameters.size();i++)g->values[i].store(c->getParamNormalized(g->parameters[i].id));g->voices.push_back(std::move(first));for(int i=1;i<voices;i++)g->voices.push_back(createInstance(*g,cid,state,stateSize,false,instrument!=0));for(auto& instance:g->voices){instance->changes.setup((int)g->parameters.size());instance->previous.assign(g->parameters.size(),-1);for(size_t i=0;i<g->parameters.size();i++)instance->changes.queues[i].id=g->parameters[i].id;}return g.release();});}catch(const std::exception& e){copyText(error,cap,e.what());return nullptr;}}
+int process(Group* g,int voice,const float* input,float* output,int n,const uint32* notes,int count){if(!g||voice<0||voice>=(int)g->voices.size()||n!=blockSize)return 0;auto& p=*g->voices[voice];for(int c=0;c<p.inputChannels;c++)memcpy(p.input[c],input,n*sizeof(float));for(auto& channel:p.output)memset(channel,0,sizeof(channel));p.changes.count=0;for(size_t i=0;i<g->parameters.size();i++){double value=g->values[i].load(std::memory_order_relaxed);if(value!=p.previous[i]){p.previous[i]=value;p.changes.queues[i].value=value;p.changes.changed[p.changes.count++]=(int)i;}}p.inBus.silenceFlags=0;p.outBus.silenceFlags=0;p.context.projectTimeSamples=p.frames;p.context.projectTimeMusic=p.frames/48000.*2;ProcessData data;data.processMode=kRealtime;data.symbolicSampleSize=kSample32;data.numSamples=n;data.numInputs=p.inputChannels?1:0;data.inputs=p.inputChannels?&p.inBus:nullptr;
+ p.auxOutputs[0]=p.outBus;data.numOutputs=(int32)p.auxOutputs.size();data.outputs=p.auxOutputs.data();
+ NoteEvents events;events.notes=notes;events.count=count;if(!p.inputChannels)data.inputEvents=&events;data.inputParameterChanges=&p.changes;data.processContext=&p.context;auto result=p.processor->process(data);p.frames+=n;if(result!=kResultOk)return 0;for(int i=0;i<n;i++){float v=p.output[0][i];if(p.outputChannels==2)v=.5f*(v+p.output[1][i]);output[i]=std::isfinite(v)?v:0;}return 1;}
+EXPORT int ql_process(Group* g,int voice,const float* input,float* output,int n){
+ return process(g,voice,input,output,n,nullptr,0);
+}
+EXPORT int ql_instrument(Group* g,int voice,float* output,int n,const uint32* notes,int count){
+ return process(g,voice,nullptr,output,n,notes,count);
+}
 EXPORT int ql_parameters(Group* g,char* out,int cap){try{auto text=onUI([&]{std::ostringstream r;r<<"{\"Latency\":"<<g->voices[0]->processor->getLatencySamples()<<",\"NeedsRestart\":"<<(g->needsRestart?"true":"false")<<",\"Parameters\":[";for(size_t i=0;i<g->parameters.size();i++){auto& p=g->parameters[i];if(i)r<<",";String128 display{};double value=g->values[i].load();auto c=g->voices[0]->controller;if(c)c->getParamStringByValue(p.id,value,display);r<<"{\"ID\":"<<p.id<<",\"Name\":"<<quote(utf8(p.title))<<",\"Value\":"<<value<<",\"Display\":"<<quote(utf8(display))<<",\"Steps\":"<<p.stepCount<<",\"ReadOnly\":"<<((p.flags&ParameterInfo::kIsReadOnly)?"true":"false")<<",\"Hidden\":"<<((p.flags&ParameterInfo::kIsHidden)?"true":"false")<<"}";}r<<"]}";return r.str();});if((int)text.size()>=cap)throw std::runtime_error("Parameter list too large");copyText(out,cap,text);return 1;}catch(const std::exception& e){copyText(out,cap,e.what());return 0;}}
 EXPORT int ql_set_parameter(Group* g,uint32 id,const double* value){try{return onUI([&]{if(!value||!std::isfinite(*value)||*value<0||*value>1)return 0;auto c=g->voices[0]->controller;if(!c)return 0;for(auto& p:g->parameters)if(p.id==id&&!(p.flags&ParameterInfo::kIsReadOnly)){if(c->setParamNormalized(id,*value)!=kResultOk)return 0;g->update(id,*value);return 1;}return 0;});}catch(...){return 0;}}
 EXPORT int ql_editor(Group* g,char* error,int cap){try{return onUI([&]{if(g->frame.window){ShowWindow(g->frame.window,SW_RESTORE);SetForegroundWindow(g->frame.window);return 1;}auto c=g->voices[0]->controller;if(!c)throw std::runtime_error("This plugin has no editor; use Parameters instead");g->view=c->createView(ViewType::kEditor);if(!g->view)throw std::runtime_error("This plugin has no editor; use Parameters instead");if(g->view->isPlatformTypeSupported(kPlatformTypeHWND)!=kResultOk){release(g->view);throw std::runtime_error("Plugin editor does not support Windows");}WNDCLASSW wc{};wc.lpfnWndProc=editorProc;wc.hInstance=GetModuleHandleW(nullptr);wc.lpszClassName=L"MolovoxVST3Editor";wc.hCursor=LoadCursor(nullptr,IDC_ARROW);RegisterClassW(&wc);ViewRect size{0,0,800,600};g->view->getSize(&size);DWORD style=WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX;RECT r{0,0,size.getWidth(),size.getHeight()};AdjustWindowRect(&r,style,FALSE);g->frame.window=CreateWindowExW(0,wc.lpszClassName,L"Molovox Labs — VST3 Plugin",style,CW_USEDEFAULT,CW_USEDEFAULT,r.right-r.left,r.bottom-r.top,nullptr,nullptr,wc.hInstance,g);if(!g->frame.window){release(g->view);throw std::runtime_error("Cannot create plugin window");}g->view->setFrame(&g->frame);if(g->view->attached(g->frame.window,kPlatformTypeHWND)!=kResultOk){g->closeEditor();throw std::runtime_error("Plugin editor could not attach");}g->view->onSize(&size);ShowWindow(g->frame.window,SW_SHOW);return 1;});}catch(const std::exception& e){copyText(error,cap,e.what());return 0;}}

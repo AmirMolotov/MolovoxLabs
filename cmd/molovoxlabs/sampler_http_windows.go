@@ -41,6 +41,16 @@ func (h *samplerHTTP) handler(fallback http.Handler) http.Handler {
 			http.Error(w, "Different-origin requests are not allowed", http.StatusForbidden)
 			return
 		}
+		if path == "sampler/library" && r.Method == http.MethodGet {
+			library, err := h.store.Library()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(library)
+			return
+		}
 		if path == "sampler/audio-import" && r.Method == http.MethodPost {
 			h.importTrimUpload(w, r)
 			return
@@ -323,7 +333,16 @@ func (h *samplerHTTP) handler(fallback http.Handler) http.Handler {
 				if r.Header.Get("X-Preview-ID") == "@audio-preview" {
 					id = "@audio-preview"
 				}
-				err = h.engine.PlayPreview(id, samples, r.Header.Get("X-Sampler-Board"), r.Header.Get("X-Preview-Loop") == "true")
+				offset := 0
+				if value := r.Header.Get("X-Preview-Offset"); value != "" {
+					seconds, parseErr := strconv.ParseFloat(value, 64)
+					if parseErr != nil || !(seconds >= 0 && seconds*sampleRate < float64(len(samples))) {
+						http.Error(w, "Preview start is outside the audio range", http.StatusBadRequest)
+						return
+					}
+					offset = int(seconds * sampleRate)
+				}
+				err = h.engine.PlayPreview(id, samples, r.Header.Get("X-Sampler-Board"), r.Header.Get("X-Preview-Loop") == "true", offset)
 			}
 			if err != nil {
 				http.Error(w, err.Error(), 400)

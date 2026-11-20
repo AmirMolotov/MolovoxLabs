@@ -260,12 +260,16 @@ type midiInput struct {
 	name             string
 	events           chan MIDIBinding
 	cc               [2048]atomic.Uint32
+	clearNotes       func()
 }
 
-func newMIDIInput(events chan MIDIBinding) *midiInput {
-	m := &midiInput{events: events}
+func newMIDIInput(events chan MIDIBinding, instrument *instrumentBank) *midiInput {
+	m := &midiInput{events: events, clearNotes: instrument.clearMIDINotes}
 	m.callback = windows.NewCallback(func(_, message, _, packet, _ uintptr) uintptr {
 		if message != 0x3c3 && message != 0x3cc {
+			return 0
+		}
+		if instrument.midiPacket(uint32(packet)) {
 			return 0
 		}
 		binding, value, ok := decodeMIDI(uint32(packet))
@@ -326,6 +330,7 @@ func (m *midiInput) closeLocked() {
 		winmm.NewProc("midiInReset").Call(m.handle)
 		winmm.NewProc("midiInClose").Call(m.handle)
 		m.handle = 0
+		m.clearNotes()
 	}
 	m.name = ""
 }
@@ -393,6 +398,7 @@ type triggerService struct {
 	FilterChanged  func(Preferences)
 	SoundPlayed    func(string)
 	suspended      atomic.Bool
+	instrumentKeys bool
 	store          *appStore
 	engine         *nativeEngine
 	keys           *globalKeys
@@ -416,14 +422,14 @@ func newTriggerService(store *appStore, engine *nativeEngine) *triggerService {
 		default:
 		}
 	})
-	t.midi = newMIDIInput(t.events)
+	t.midi = newMIDIInput(t.events, &engine.instruments)
 	go t.loop()
 	return t
 }
 func (t *triggerService) Configure(p Preferences) error {
 	t.configMu.Lock()
 	defer t.configMu.Unlock()
-	l, err := t.store.Library()
+	l, err := t.store.libraryMetadata()
 	if err != nil {
 		return err
 	}
@@ -444,7 +450,7 @@ func (t *triggerService) Configure(p Preferences) error {
 		}
 	}
 	t.maps.Store(mapping)
-	if err = t.keys.Apply(l, p.GlobalKeys && !t.suspended.Load()); err != nil {
+	if err = t.keys.Apply(l, p.GlobalKeys && !t.suspended.Load() && !t.instrumentKeys); err != nil {
 		return err
 	}
 	t.keyLibrary = l
@@ -460,10 +466,26 @@ func (t *triggerService) Configure(p Preferences) error {
 func (t *triggerService) SuspendShortcuts(on bool) error {
 	t.configMu.Lock()
 	defer t.configMu.Unlock()
-	if err := t.keys.Apply(t.keyLibrary, t.globalEnabled && !on); err != nil {
+	if err := t.keys.Apply(t.keyLibrary, t.globalEnabled && !on && !t.instrumentKeys); err != nil {
 		return err
 	}
 	t.suspended.Store(on)
+	return nil
+}
+func (t *triggerService) instrumentInput(keyboard, midi bool) error {
+	t.configMu.Lock()
+	defer t.configMu.Unlock()
+	if keyboard != t.instrumentKeys {
+		if err := t.keys.Apply(t.keyLibrary, t.globalEnabled && !t.suspended.Load() && !keyboard); err != nil {
+			if !keyboard {
+				t.engine.instruments.setInput(false, midi)
+				t.instrumentKeys = false
+			}
+			return err
+		}
+		t.instrumentKeys = keyboard
+	}
+	t.engine.instruments.setInput(keyboard, midi)
 	return nil
 }
 func (t *triggerService) SelectMIDIInput(name string) error {
@@ -519,7 +541,7 @@ func (t *triggerService) Play(id string) error {
 		}
 		t.cache[id] = samples
 	}
-	l, err := t.store.Library()
+	l, err := t.store.libraryMetadata()
 	if err != nil {
 		return err
 	}
@@ -548,6 +570,9 @@ func (t *triggerService) loop() {
 		case <-t.stop:
 			return
 		case id := <-t.plays:
+			if t.engine.instruments.keyboard.Load() {
+				continue
+			}
 			err := t.Run(id)
 			t.mu.Lock()
 			if err != nil {
@@ -561,6 +586,9 @@ func (t *triggerService) loop() {
 			}
 			t.mu.Unlock()
 		case m := <-t.events:
+			if t.engine.instruments.midi.Load() {
+				continue
+			}
 			t.mu.Lock()
 			t.status.Sequence++
 			copy := m

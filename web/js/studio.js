@@ -6,6 +6,7 @@ let active=false,busy=false,ready=false,polling=false,pollTimer=null,saveTimer=n
 let micFilters=[],filterGroups=[],allFilterHotkeys=[],allFilterMIDIs=[],bypassFilters=false;
 let wantListening=false,routeApplying=false,routeDirty=false,routeTimer=null;
 let padViews=new Map(),playingSounds=new Map();
+let settingsExtras,vstCatalogLoading;
 function openTab(name){
  if(name!==currentTab&&typeof cancelPatchSelection==='function')cancelPatchSelection();
  if(name!==currentTab&&typeof clearBoardSearch==='function')clearBoardSearch();
@@ -14,8 +15,13 @@ function openTab(name){
  if(name!=='patch'&&typeof patchFocusView!=='undefined'&&patchFocusView)togglePatchFocus(false);
  if(currentTab!==name&&typeof stopTrimLoop==='function')stopTrimLoop();currentTab=name;
  for(const tab of document.querySelectorAll('[data-tab]')){const on=tab.dataset.tab===name;tab.setAttribute('aria-selected',String(on));tab.tabIndex=on?0:-1;$(tab.getAttribute('aria-controls')).hidden=!on;}
+ if(typeof updateInstrumentInput==='function')updateInstrumentInput();
+ if(name==='instruments'&&typeof openInstruments==='function')openInstruments();
  if(name==='shortcuts'&&typeof renderShortcuts==='function')renderShortcuts();
- if(active)poll();else idle();if(name==='patch'){renderPatch();togglePatchFocus(true);refreshPatchApps();}if(name==='sampler'||name==='recording')refreshSamplerRecordOutputs();if(name==='arrange'&&typeof renderArrangement==='function')renderArrangement();
+ if(active)poll();else idle();if(name==='patch'){if(!vstCatalogLoading){renderFilters();renderGroups();vstCatalogLoading=initVST();}renderPatch();togglePatchFocus(true);refreshPatchApps();}
+ if(name==='sampler'||name==='recording'){initSampler(preferences);refreshSamplerRecordOutputs();}
+ if(name==='arrange')initArrangement();
+ if(name==='settings'&&!settingsExtras)settingsExtras=Promise.all([initWindowsStartup(),refreshMIDI()]).catch(e=>{settingsExtras=null;message(errorText(e));});
 }
 document.querySelectorAll('[data-tab]').forEach(tab=>{
  tab.onclick=()=>openTab(tab.dataset.tab);
@@ -103,12 +109,12 @@ async function stop(reason='Listening paused. Devices released.'){
  try{await queueSettings(()=>withLoading('Pausing audio…',()=>nativeStop()));clearInterval(pollTimer);pollTimer=null;setLive(false);idle();updatePlayback([]);$('inputDB').textContent=$('outputDB').textContent='— dBFS';message(reason);}
  catch(e){message(errorText(e));}finally{busy=false;$('pause').disabled=false;}
 }
-async function start(){
+async function start(blocking=true){
  if(active||busy)return false;
  wantListening=true;
- const s=selections();if((!s.Inputs.length&&!patchGraph?.Enabled)||!s.Outputs.length){setLive(false);message('Select an output and either a microphone or enable Patch bay.');return false;}
+ const s=selections();if((!s.Inputs.length&&!patchGraph?.Enabled&&!(typeof activeInstruments!=='undefined'&&activeInstruments.length))||!s.Outputs.length){setLive(false);message('Select an output and either a microphone or enable Patch bay.');return false;}
  busy=true;$('pause').disabled=true;
- try{await queueSettings(()=>withLoading('Opening audio devices…',()=>nativeStart({...selections(),Options:options()}),true));busy=false;setLive(true);clearInterval(pollTimer);pollTimer=setInterval(poll,66);await poll();message('Listening. Device changes apply automatically.');return true;}
+ try{await queueSettings(()=>withLoading('Opening audio devices…',()=>nativeStart({...selections(),Options:options()}),blocking));busy=false;setLive(true);clearInterval(pollTimer);pollTimer=setInterval(poll,66);await poll();message('Listening. Device changes apply automatically.');return true;}
  catch(e){busy=false;setLive(false);message(errorText(e));return false;}
  finally{busy=false;$('pause').disabled=false;}
 }
@@ -128,7 +134,7 @@ async function applyRouting(){
  if(!ready||routeApplying)return;
  if(busy){routeTimer=setTimeout(applyRouting,90);return;}
  routeApplying=true;
- try{do{routeDirty=false;await save();if(wantListening){if(active)await stop('Switching devices…');const s=selections();if((s.Inputs.length||patchGraph?.Enabled)&&s.Outputs.length)await start();else message('Select an output and either a microphone or enable Patch bay to resume listening.');}}while(routeDirty);}
+ try{do{routeDirty=false;await save();if(wantListening){if(active)await stop('Switching devices…');const s=selections();if((s.Inputs.length||patchGraph?.Enabled||(typeof activeInstruments!=='undefined'&&activeInstruments.length))&&s.Outputs.length)await start();else message('Select an output and either a microphone or enable Patch bay to resume listening.');}}while(routeDirty);}
  finally{routeApplying=false;}
 }
 $('refresh').onclick=async()=>{try{fillDevices(await withLoading('Finding audio devices…',()=>nativeDevices()),snapshotPreferences());deviceChoiceChanged();}catch(e){message(errorText(e));}};
@@ -136,10 +142,10 @@ $('testTone').onclick=async()=>{if(!active&&!await start())return;try{await nati
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!busy&&!document.querySelector('dialog[open]')){wantListening=false;nativeStopSounds().catch(()=>{});stop();}});
 window.addEventListener('resize',()=>{if(!active)idle();});
 window.addEventListener('pagehide',()=>{nativeStop().catch(()=>{});});
-function renderLibrary(preferred){
+function renderLibrary(preferred,preferredSampler){
  const previous=preferred||$('boardSelect').value;$('boardSelect').replaceChildren();
  for(const b of library.Boards.filter(b=>b.Kind!=='video'))$('boardSelect').add(new Option(b.Name,b.ID));
- if(library.Boards.some(b=>b.Kind!=='video'&&b.ID===previous))$('boardSelect').value=previous;renderPads();renderSamplerLibrary();if(patchGraph)renderPatch();
+ if(library.Boards.some(b=>b.Kind!=='video'&&b.ID===previous))$('boardSelect').value=previous;renderPads();renderSamplerLibrary(preferredSampler,currentTab==='sampler');if(currentTab==='patch')renderPatch();
 }
 function clipKeys(sound){return sound.Hotkeys??(sound.Hotkey?[sound.Hotkey]:[]);}
 function clipMIDIs(sound){return sound.MIDIs??(sound.MIDI?[sound.MIDI]:[]);}
@@ -200,25 +206,33 @@ $('confirmDeleteBoard').onclick=async()=>{
 
 $('createBoard').onclick=async()=>{try{library=await nativeCreateBoard($('boardName').value);$('boardName').value='';renderLibrary(library.Boards.at(-1).ID);await save();}catch(e){message(errorText(e));}};
 $('stopSounds').onclick=async()=>{await nativeStopSounds();updatePlayback([]);$('boardStatus').textContent='All sounds stopped.';};
-$('exportBoard').onclick=async()=>{try{const boardID=$('boardSelect').value;if(typeof boardLayoutPending!=='undefined'&&boardLayoutPending)await boardLayoutPending;const path=await withLoading('Exporting soundboard and audio…',()=>nativeExportBoard(boardID),true);if(path)$('boardStatus').textContent='Exported audio, groups, pad order and shortcuts in one .qlboard package.';}catch(e){message(errorText(e));}};
 $('importBoard').onclick=()=>openBoardImport();
 
-function loadFilterModels(p){
- micFilters=p.Options?.Filters||[];filterGroups=p.FilterGroups||[];allFilterHotkeys=p.AllFilterHotkeys||[];allFilterMIDIs=p.AllFilterMIDIs||[];bypassFilters=!!p.Options?.BypassFilters;renderFilters();renderGroups();
+function loadFilterModels(p,render=true){
+ micFilters=p.Options?.Filters||[];filterGroups=p.FilterGroups||[];allFilterHotkeys=p.AllFilterHotkeys||[];allFilterMIDIs=p.AllFilterMIDIs||[];bypassFilters=!!p.Options?.BypassFilters;if(render){renderFilters();renderGroups();}
 }
 async function init(){
- const finishLoading=beginLoading('Opening your audio workspace…',true);
+ const finishLoading=beginLoading('Loading your soundboard…',true);
+ let missing=false;
  try{
   await paintLoading();
-  await initWindowsStartup();preferences=await nativeLoadPreferences();initSoundboardView(preferences.SoundboardView);await initVST(preferences);const o=preferences.Options||{};$('boardDelay').checked=!!o.SoundboardDelay;
+  preferences=await nativeLoadPreferences();initSoundboardView(preferences.SoundboardView);const o=preferences.Options||{};$('boardDelay').checked=!!o.SoundboardDelay;
   $('master').value=Math.round((o.Volume??1)*100);$('boardVolume').value=Math.round((o.BoardVolume??1)*100);$('monitorMic').checked=!!(o.MonitorMic||o.Enabled);$('autoListen').checked=preferences.AutoListen??true;$('globalKeys').checked=preferences.GlobalKeys??true;
-  loadFilterModels(preferences);await refreshMIDI(preferences.MIDIInput||'');updateLabels();
-  const missing=fillDevices(await nativeDevices(),preferences);
-  library=await nativeLibrary();await initSampler(preferences);await initArrangement();renderLibrary(preferences.BoardID);initPatch(preferences);await nativeConfigure(options());ready=true;wantListening=$('autoListen').checked;$('pause').disabled=false;
-  if(missing){setLive(false);openTab('settings');message('A saved device is missing. Select a replacement to switch automatically.');}
-  else if(wantListening){await start();if(!preferences.Saved)await save();}
-  else{setLive(false);message('Automatic listening is off. Resume when ready.');}
- }catch(e){setLive(false);message('Could not open Studio: '+errorText(e));}
+  $('vstFolders').value=(preferences.VSTFolders||[]).join('\n');
+  if(preferences.MIDIInput){$('midiInput').add(new Option(preferences.MIDIInput,preferences.MIDIInput));$('midiInput').value=preferences.MIDIInput;}
+  const response=await fetch(new URL('sampler/library',location.href));if(!response.ok)throw new Error((await response.text()).trim());
+  library=await response.json();loadFilterModels(preferences,false);updateLabels();initPatch(preferences,false);
+  missing=fillDevices(await nativeDevices(),preferences);await initSamplerPreferences(preferences);
+  renderLibrary(preferences.BoardID,preferences.SamplerBoardID);
+  ready=true;wantListening=$('autoListen').checked;$('pause').disabled=false;
+ }catch(e){setLive(false);message('Could not open Studio: '+errorText(e));return;}
  finally{finishLoading();}
  idle();
+ if(wantListening&&!missing){await start(false);if(!preferences.Saved)await save();}
+ else{
+  setLive(false);
+  if(missing){openTab('settings');message('A saved device is missing. Select a replacement to switch automatically.');}
+  else message('Automatic listening is off. Resume when ready.');
+  try{await queueSettings(()=>nativeConfigure(options()));}catch(e){message(errorText(e));}
+ }
 }

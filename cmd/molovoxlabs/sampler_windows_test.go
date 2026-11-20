@@ -17,6 +17,33 @@ import (
 	"testing"
 )
 
+func TestSoundboardStartupLibraryUsesSessionAndOrigin(t *testing.T) {
+	store := &appStore{root: t.TempDir()}
+	handler := (&samplerHTTP{prefix: "/session/", store: store}).handler(http.NotFoundHandler())
+	for _, test := range []struct {
+		path, origin string
+		status       int
+	}{
+		{"/session/sampler/library", "http://local", http.StatusOK},
+		{"/session/sampler/library", "http://other", http.StatusForbidden},
+		{"/sampler/library", "http://local", http.StatusNotFound},
+	} {
+		request := httptest.NewRequest(http.MethodGet, "http://local"+test.path, nil)
+		request.Header.Set("Origin", test.origin)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != test.status {
+			t.Fatalf("GET %s from %s: %d, want %d", test.path, test.origin, response.Code, test.status)
+		}
+		if test.status == http.StatusOK {
+			var library libraryState
+			if err := json.Unmarshal(response.Body.Bytes(), &library); err != nil || len(library.Boards) != 1 || library.Boards[0].ID != "default" {
+				t.Fatalf("unexpected library: %s (%v)", response.Body.String(), err)
+			}
+		}
+	}
+}
+
 func TestVideoSampleMultipartSaveAndReload(t *testing.T) {
 	s, state, source := samplerFixture(t)
 	meta := CreateVideoSample{BoardID: state.Library.Boards[1].ID, Name: "Trimmed moment", Video: VideoSample{SourceID: source.ID, In: 1, Out: 1.1, Crop: VideoCrop{X: .1, Y: .1, Width: .8, Height: .8}, Thumbnail: "data:image/jpeg;base64," + strings.Repeat("a", 70000)}}

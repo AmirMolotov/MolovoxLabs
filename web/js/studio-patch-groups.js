@@ -55,7 +55,7 @@ function decoratePatchGroupSelection(node,header,card){
 }
 function patchGroupGraphValid(nodes,cables){
  const index=new Map(nodes.map(n=>[n.ID,n])),edges=new Set(),next=new Map();
- for(const c of cables){const a=index.get(c.From),b=index.get(c.To),key=c.From+'>'+c.To;if(!a||!b||a.ID===b.ID||a.Kind==='output'||['mic','board','clip','app'].includes(b.Kind)||edges.has(key))return false;edges.add(key);if(!next.has(c.From))next.set(c.From,[]);next.get(c.From).push(c.To);}
+ for(const c of cables){const a=index.get(c.From),b=index.get(c.To),key=c.From+'>'+c.To;if(!a||!b||a.ID===b.ID||a.Kind==='output'||['mic','board','clip','app','instrument'].includes(b.Kind)||edges.has(key))return false;edges.add(key);if(!next.has(c.From))next.set(c.From,[]);next.get(c.From).push(c.To);}
  const visiting=new Set(),done=new Set();function visit(id){if(visiting.has(id))return false;if(done.has(id))return true;visiting.add(id);for(const to of next.get(id)||[])if(!visit(to))return false;visiting.delete(id);done.add(id);return true;}return nodes.every(n=>visit(n.ID));
 }
 function patchGroupAddEffect(id,kind){

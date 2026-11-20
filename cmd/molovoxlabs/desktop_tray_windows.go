@@ -12,41 +12,44 @@ import (
 )
 
 const (
-	trayNotifyMessage = 0x8000 + 714
-	trayOpenMessage   = 0x8000 + 715
+	trayNotifyMessage     = 0x8000 + 714
+	trayOpenMessage       = 0x8000 + 715
+	trayInstrumentMessage = 0x8000 + 716
+	altTapInterval        = 400
 )
 
-// Two completed, unmodified Alt taps. Neither Alt nor any other key is swallowed.
+// Completed, unmodified Alt taps. Neither Alt nor any other key is swallowed.
 // Message timestamps use uint32 subtraction so Windows' tick counter can wrap.
 type altTapDetector struct {
 	down             [256]bool
 	altDown          bool
 	started, lastTap uint32
-	used, pending    bool
+	used             bool
+	taps             uint8
 }
 
-func (d *altTapDetector) key(vk uint32, down bool, at uint32, blocked bool) bool {
+func (d *altTapDetector) key(vk uint32, down bool, at uint32, blocked bool) uint8 {
 	if vk > 255 {
-		return false
+		return 0
 	}
 	alt := vk == 18 || vk == 164 || vk == 165
 	if !alt {
 		d.down[vk] = down
 		if down {
 			d.used = true
-			d.pending = false
+			d.taps = 0
 		}
-		return false
+		return 0
 	}
 	if down {
 		if d.down[vk] {
-			return false
+			return 0
 		}
 		d.down[vk] = true
 		if d.altDown {
 			d.used = true
-			d.pending = false
-			return false
+			d.taps = 0
+			return 0
 		}
 		d.altDown = true
 		d.started = at
@@ -57,32 +60,38 @@ func (d *altTapDetector) key(vk uint32, down bool, at uint32, blocked bool) bool
 			}
 		}
 		if d.used {
-			d.pending = false
+			d.taps = 0
 		}
-		return false
+		return 0
 	}
 	if !d.down[vk] {
-		d.pending = false
-		return false
+		d.taps = 0
+		return 0
 	}
 	d.down[vk] = false
 	for _, key := range []int{18, 164, 165} {
 		if d.down[key] {
-			return false
+			return 0
 		}
 	}
 	d.altDown = false
 	if d.used || blocked || at-d.started > 250 {
-		d.pending = false
-		return false
+		d.taps = 0
+		return 0
 	}
-	if d.pending && at-d.lastTap <= 400 {
-		d.pending = false
-		return true
+	if at-d.lastTap > altTapInterval {
+		d.taps = 0
 	}
 	d.lastTap = at
-	d.pending = true
-	return false
+	d.taps++
+	if d.taps == 3 {
+		d.taps = 0
+		return 3
+	}
+	if d.taps == 2 {
+		return 2
+	}
+	return 0
 }
 
 var trayKeyState = user32.NewProc("GetAsyncKeyState")
@@ -115,6 +124,15 @@ func newAltTapListener(hwnd uintptr) (*altTapListener, error) {
 		}
 		detector.altDown = detector.down[18] || detector.down[164] || detector.down[165]
 		detector.used = detector.altDown
+		var pending uintptr
+		setTimer, killTimer := user32.NewProc("SetTimer"), user32.NewProc("KillTimer")
+		stopTimer := func() {
+			if pending != 0 {
+				killTimer.Call(0, pending)
+				pending = 0
+			}
+		}
+		defer stopTimer()
 		callback := windows.NewCallback(func(code, wp uintptr, lp unsafe.Pointer) uintptr {
 			if int32(code) >= 0 {
 				event := (*struct {
@@ -122,7 +140,7 @@ func newAltTapListener(hwnd uintptr) (*altTapListener, error) {
 					Extra                  uintptr
 				})(lp)
 				if event.Flags&0x10 != 0 {
-					detector.pending = false
+					detector.taps = 0
 					if detector.altDown {
 						detector.used = true
 					}
@@ -138,8 +156,16 @@ func newAltTapListener(hwnd uintptr) (*altTapListener, error) {
 							}
 						}
 					}
-					if detector.key(event.Key, wp == 0x100 || wp == 0x104, event.Time, blocked) {
-						trayPostMessage.Call(hwnd, trayOpenMessage, 0, 0)
+					switch detector.key(event.Key, wp == 0x100 || wp == 0x104, event.Time, blocked) {
+					case 2:
+						stopTimer()
+						pending, _, _ = setTimer.Call(0, 0, altTapInterval+1, 0)
+						if pending == 0 {
+							trayPostMessage.Call(hwnd, trayOpenMessage, 0, 0)
+						}
+					case 3:
+						stopTimer()
+						trayPostMessage.Call(hwnd, trayInstrumentMessage, 0, 0)
 					}
 				}
 			}
@@ -149,7 +175,7 @@ func newAltTapListener(hwnd uintptr) (*altTapListener, error) {
 		module, _, _ := windows.NewLazySystemDLL("kernel32.dll").NewProc("GetModuleHandleW").Call(0)
 		hook, _, err := user32.NewProc("SetWindowsHookExW").Call(13, callback, module, 0)
 		if hook == 0 {
-			ready <- fmt.Errorf("Double-Alt shortcut: %w", err)
+			ready <- fmt.Errorf("Alt tap shortcuts: %w", err)
 			return
 		}
 		defer user32.NewProc("UnhookWindowsHookEx").Call(hook)
@@ -158,6 +184,12 @@ func newAltTapListener(hwnd uintptr) (*altTapListener, error) {
 			result, _, _ := user32.NewProc("GetMessageW").Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0)
 			if int32(result) <= 0 {
 				return
+			}
+			if msg.Message == 0x113 && pending != 0 && msg.WParam == pending {
+				stopTimer()
+				detector.taps = 0
+				trayPostMessage.Call(hwnd, trayOpenMessage, 0, 0)
+				continue
 			}
 			user32.NewProc("TranslateMessage").Call(uintptr(unsafe.Pointer(&msg)))
 			user32.NewProc("DispatchMessageW").Call(uintptr(unsafe.Pointer(&msg)))
@@ -200,6 +232,7 @@ type desktopTray struct {
 	taskbarCreated uint32
 	added, exiting bool
 	open           func()
+	openInstrument func()
 	keys           *altTapListener
 }
 
@@ -230,6 +263,12 @@ func installDesktopTray(hwnd uintptr, open func()) (*desktopTray, error) {
 			}
 		case trayOpenMessage:
 			t.show()
+			return 0
+		case trayInstrumentMessage:
+			t.restore()
+			if t.openInstrument != nil {
+				t.openInstrument()
+			}
 			return 0
 		case trayNotifyMessage:
 			switch uint32(lp) & 0xffff {
@@ -280,6 +319,12 @@ func (t *desktopTray) remove() {
 	}
 }
 func (t *desktopTray) show() {
+	t.restore()
+	if t.open != nil {
+		t.open()
+	}
+}
+func (t *desktopTray) restore() {
 	minimized, _, _ := user32.NewProc("IsIconic").Call(t.hwnd)
 	if minimized != 0 {
 		user32.NewProc("ShowWindow").Call(t.hwnd, 9)
@@ -287,9 +332,6 @@ func (t *desktopTray) show() {
 		user32.NewProc("ShowWindow").Call(t.hwnd, 5)
 	}
 	focusTrayWindow(t.hwnd)
-	if t.open != nil {
-		t.open()
-	}
 }
 func (t *desktopTray) menu() {
 	menu, _, _ := user32.NewProc("CreatePopupMenu").Call()

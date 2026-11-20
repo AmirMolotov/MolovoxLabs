@@ -45,6 +45,7 @@ func main() {
 	smokePath := flag.String("native-smoke", "", "Run silent native WASAPI playback check and write JSON")
 	capturePath := flag.String("native-capture-check", "", "Check native capture and render with muted output")
 	dataRoot := flag.String("data-dir", "", "Use an alternate local profile directory")
+	startInTray := flag.Bool(strings.TrimPrefix(startupTrayArg, "--"), false, "Start active in the tray without showing the window")
 	vstScan := flag.String("vst-scan", "", "Scan one VST3 module in an isolated process")
 	vstScanAll := flag.Bool("vst-scan-all", false, "Scan installed VST3 effects and exit")
 	vstResult := flag.String("vst-result", "", "Write VST3 scan results to this file")
@@ -91,8 +92,16 @@ func main() {
 		}
 		return
 	}
+	activation, err := openInstanceActivation(`Local\MolovoxLabs.Activate`)
+	if err != nil && !errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
+		log.Fatal("Could not set up application activation: ", err)
+	}
+	defer windows.CloseHandle(activation)
 	instance, err := openInstanceMutex(`Local\MolovoxLabs`)
 	if errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
+		if !*startInTray {
+			windows.SetEvent(activation)
+		}
 		return
 	}
 	if err != nil {
@@ -153,10 +162,24 @@ func main() {
 	if *dataRoot != "" {
 		windowTitle += " — Test profile"
 	}
+	// Refresh existing sign-in registrations to include the tray launch flag.
+	if *dataRoot == "" {
+		if err := upgradeWindowsStartup(); err != nil {
+			log.Print("Could not update Windows startup: ", err)
+		}
+	}
+	finishHiddenStart := func() {}
+	if *startInTray {
+		finishHiddenStart, err = hideInitialDesktopWindow()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 	window := webview.NewWithOptions(webview.WebViewOptions{
 		DataPath: profile, AutoFocus: true,
 		WindowOptions: webview.WindowOptions{Title: windowTitle, Width: 1240, Height: 950, Center: true},
 	})
+	finishHiddenStart()
 	if window == nil {
 		log.Fatal("Could not start WebView2. Install Microsoft Edge WebView2 Runtime.")
 	}
@@ -302,8 +325,14 @@ func main() {
 		"nativeVSTScanStatus":   scanner.snapshot,
 		"nativeLoadVSTPlugins":  store.VSTLibrary,
 		"nativeSnapshotEffects": engine.vst.capture,
-		"nativeVSTInfo":         engine.vst.info,
-		"nativeVSTEditor":       engine.vst.editor,
+		"nativeSetInstruments": func(ids []string) error {
+			return engine.setInstruments(ids, store.VSTLibrary().Plugins)
+		},
+		"nativeInstrumentEditor": engine.instruments.rack.editor,
+		"nativeInstrumentInput":  triggers.instrumentInput,
+		"nativeInstrumentNote":   engine.instruments.keyNote,
+		"nativeVSTInfo":          engine.vst.info,
+		"nativeVSTEditor":        engine.vst.editor,
 		"nativeVSTParameter": func(id string, param uint32, value float64) error {
 			if err := engine.vst.parameter(id, param, value); err != nil {
 				return err
@@ -473,15 +502,19 @@ func main() {
 			}
 			return l, nil
 		},
-		"nativeExportBoard": func(id string) (string, error) {
-			path, err := chooseBoardFile(uintptr(window.Window()), true)
+		"nativeExportBoard": func(id string, selection boardExportSelection) (string, error) {
+			name := strings.TrimSpace(selection.Name)
+			if name == "" || len(name) > 80 || len(selection.Groups) == 0 && len(selection.Sounds) == 0 {
+				return "", errors.New("Name the export and select at least one group or sound")
+			}
+			path, err := chooseBoardFile(uintptr(window.Window()), name)
 			if err != nil || path == "" {
 				return "", err
 			}
-			return path, store.ExportBoard(id, path)
+			return path, store.ExportBoard(id, path, selection)
 		},
 		"nativeImportBoard": func(includeShortcuts bool) (libraryState, error) {
-			path, err := chooseBoardFile(uintptr(window.Window()), false)
+			path, err := chooseBoardFile(uintptr(window.Window()), "")
 			if err != nil {
 				return libraryState{}, err
 			}
@@ -535,10 +568,36 @@ func main() {
 		log.Fatal(err)
 	}
 	defer tray.Close()
+	tray.openInstrument = func() {
+		window.Dispatch(func() {
+			window.Eval("window.MOLOVOX_OPEN_INSTRUMENTS=true;window.dispatchEvent(new Event('molovox-open-instruments'));")
+		})
+	}
 	tray.keys, err = newAltTapListener(uintptr(window.Window()))
 	if err != nil {
 		tray.Close()
 		log.Fatal(err)
 	}
+	closing, activationDone := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(activationDone)
+		for {
+			result, err := windows.WaitForSingleObject(activation, windows.INFINITE)
+			if err != nil || result != windows.WAIT_OBJECT_0 {
+				return
+			}
+			select {
+			case <-closing:
+				return
+			default:
+				window.Dispatch(tray.restore)
+			}
+		}
+	}()
+	defer func() {
+		close(closing)
+		windows.SetEvent(activation)
+		<-activationDone
+	}()
 	window.Run()
 }

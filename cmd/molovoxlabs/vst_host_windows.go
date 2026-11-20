@@ -30,9 +30,9 @@ import (
 var vstBridgeBinary = nativebinary.VSTBridge
 
 type vstBridge struct {
-	dll                                                                 *windows.DLL
-	scan, open, process, parameters, setParameter, editor, state, close *windows.Proc
-	mu                                                                  sync.Mutex // Serializes control calls and their result buffers, never audio.
+	dll                                                                             *windows.DLL
+	scan, open, process, instrument, parameters, setParameter, editor, state, close *windows.Proc
+	mu                                                                              sync.Mutex // Serializes control calls and their result buffers, never audio.
 }
 
 var bridgeOnce sync.Once
@@ -65,7 +65,7 @@ func loadVSTBridge() (*vstBridge, error) {
 			return
 		}
 		b := &vstBridge{dll: dll}
-		for name, target := range map[string]**windows.Proc{"ql_scan": &b.scan, "ql_open": &b.open, "ql_process": &b.process, "ql_parameters": &b.parameters, "ql_set_parameter": &b.setParameter, "ql_editor": &b.editor, "ql_state": &b.state, "ql_close": &b.close} {
+		for name, target := range map[string]**windows.Proc{"ql_scan": &b.scan, "ql_open": &b.open, "ql_process": &b.process, "ql_instrument": &b.instrument, "ql_parameters": &b.parameters, "ql_set_parameter": &b.setParameter, "ql_editor": &b.editor, "ql_state": &b.state, "ql_close": &b.close} {
 			*target, err = dll.FindProc(name)
 			if err != nil {
 				bridgeError = err
@@ -236,6 +236,7 @@ type vstVoice struct {
 	input, output [128]float32
 	at            int
 	failed        atomic.Bool
+	notes         *instrumentVoice
 }
 type vstUnit struct {
 	handle        uintptr
@@ -245,6 +246,9 @@ type vstUnit struct {
 }
 
 func openVSTUnit(f MicFilter, outputs int) (*vstUnit, error) {
+	return openVSTPlugin(f, outputs, false)
+}
+func openVSTPlugin(f MicFilter, outputs int, instrument bool) (*vstUnit, error) {
 	b, err := loadVSTBridge()
 	if err != nil {
 		return nil, err
@@ -271,11 +275,21 @@ func openVSTUnit(f MicFilter, outputs int) (*vstUnit, error) {
 		statePtr = uintptr(unsafe.Pointer(&state[0]))
 	}
 	out := make([]byte, 2048)
-	h, _, _ := b.open.Call(uintptr(unsafe.Pointer(p)), uintptr(unsafe.Pointer(class)), statePtr, uintptr(len(state)), uintptr(outputs), uintptr(unsafe.Pointer(&out[0])), uintptr(len(out)))
+	var instrumentFlag uintptr
+	if instrument {
+		instrumentFlag = 1
+	}
+	h, _, _ := b.open.Call(uintptr(unsafe.Pointer(p)), uintptr(unsafe.Pointer(class)), statePtr, uintptr(len(state)), uintptr(outputs), uintptr(unsafe.Pointer(&out[0])), uintptr(len(out)), instrumentFlag)
 	if h == 0 {
 		return nil, errors.New(vstText(out))
 	}
-	return &vstUnit{handle: h, bridge: b, path: f.PluginPath, classID: f.ClassID, voices: make([]vstVoice, outputs)}, nil
+	unit := &vstUnit{handle: h, bridge: b, path: f.PluginPath, classID: f.ClassID, voices: make([]vstVoice, outputs)}
+	if instrument {
+		for i := range unit.voices {
+			unit.voices[i].notes = &instrumentVoice{}
+		}
+	}
+	return unit, nil
 }
 func (u *vstUnit) sample(voice int, x float32) float32 {
 	if voice < 0 || voice >= len(u.voices) {
@@ -365,8 +379,9 @@ func (u *vstUnit) close() {
 }
 
 type vstRackSnapshot struct {
-	units  map[string]*vstUnit
-	errors map[string]string
+	playback []*vstUnit
+	units    map[string]*vstUnit
+	errors   map[string]string
 }
 type vstRack struct {
 	mu      sync.Mutex
@@ -375,6 +390,9 @@ type vstRack struct {
 }
 
 func (r *vstRack) configure(filters []MicFilter, outputs int) {
+	_ = r.configurePlugins(filters, outputs, false)
+}
+func (r *vstRack) configurePlugins(filters []MicFilter, outputs int, instrument bool) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if outputs < 1 {
@@ -400,13 +418,24 @@ func (r *vstRack) configure(filters []MicFilter, outputs int) {
 		}
 		if unit == nil && f.Enabled {
 			var err error
-			unit, err = openVSTUnit(f, outputs)
+			unit, err = openVSTPlugin(f, outputs, instrument)
 			if err != nil {
+				if instrument {
+					for id, opened := range next.units {
+						if old == nil || old.units[id] != opened {
+							opened.close()
+						}
+					}
+					return fmt.Errorf("%s: %w", f.PluginName, err)
+				}
 				next.errors[f.ID] = "Plugin bypassed: " + err.Error()
 			}
 		}
 		if unit != nil {
 			next.units[f.ID] = unit
+			if instrument {
+				next.playback = append(next.playback, unit)
+			}
 		}
 	}
 	if old != nil {
@@ -417,6 +446,7 @@ func (r *vstRack) configure(filters []MicFilter, outputs int) {
 		}
 	}
 	r.current.Store(next)
+	return nil
 }
 func (r *vstRack) unit(id string) (*vstUnit, error) {
 	s := r.current.Load()

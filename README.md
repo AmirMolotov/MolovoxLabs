@@ -8,57 +8,21 @@ Closing or minimizing the window keeps it running in the tray. Tap Alt twice to 
 
 ## Installation
 
-![Quick setup: app, WebView2, FFmpeg PATH and VB-CABLE routing](assets/guides/install.gif)
+1. Download **MolovoxLabs-<version>-x64-Setup.exe** from [Releases](https://github.com/AmirMolotov/MolovoxLabs/releases) on Windows 10 (1809 or later) or Windows 11, x64.
+2. Review the setup terms, check the acceptance box, and select **Install**. Use **Options** to change the application folder. Setup downloads FFmpeg and ffprobe, installs any missing Microsoft Edge WebView2 and VB-CABLE prerequisites, and then installs Molovox Labs. Keep an internet connection available, approve the administrator prompt, and restart Windows if setup asks you to.
+3. Open **Molovox Labs** from the Start menu. To start it in the tray at sign-in, enable **Start with Windows** in Settings.
 
-*15-second setup guide. Full steps and clickable downloads are below.*
+VB-CABLE is supplied by [VB-Audio](https://vb-audio.com/Cable/). It is donationware and contributions are welcome. To send audio to Discord, select **CABLE Input** as an output in Molovox and **CABLE Output** as the microphone in Discord. Keep your physical microphone selected as the input in Molovox.
 
-1. Download **MolovoxLabs.exe** from [Releases](https://github.com/AmirMolotov/MolovoxLabs/releases) and run it on **Windows x64**. No account needed.
-2. Install the [WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download) if it isn't already on your computer. Choose the x64 standalone installer or the Evergreen Bootstrapper.
-3. Install **FFmpeg 7 or newer** to import, preview, and export media. Molovox Labs needs both `ffmpeg.exe` and `ffprobe.exe`.
-
-### FFmpeg on Windows
-
-1. Open the [official FFmpeg download page](https://ffmpeg.org/download.html). Under **Windows EXE Files**, follow the [gyan.dev Windows builds link](https://www.gyan.dev/ffmpeg/builds/) and download `ffmpeg-release-essentials.zip`.
-2. Extract the ZIP to a permanent location. Find the `bin` folder containing `ffmpeg.exe` and `ffprobe.exe`, for example `C:\Tools\ffmpeg\bin`.
-3. In the Start menu, search for **Edit environment variables for your account**. Under **User variables**, select **Path → Edit → New** and add the full path to that `bin` folder. Click **OK** to save.
-
-Alternatively, install the prerequisites from PowerShell (accept any administrator prompt):
+Uninstalling Molovox removes its private FFmpeg tools and leaves the shared VB-CABLE and WebView2 installations and your library in place. If setup fails, run it again with logging from an elevated PowerShell window. The most recent prerequisite error is also recorded under the `SetupError` value in `HKLM\SOFTWARE\MolovoxLabs`.
 
 ```powershell
-winget install --id Microsoft.EdgeWebView2Runtime --exact --source winget
-winget install --id Gyan.FFmpeg --exact --source winget
+.\MolovoxLabs-0.4.2-x64-Setup.exe /log "molovox-install.log"
 ```
 
-If `winget` is unavailable, use the download links above. These are runtime requirements; you do not need Go, Node.js, Python or Visual Studio to use the downloaded app.
+For unattended setup, review the terms first and pass `/quiet /norestart AcceptTerms=1` from an elevated terminal. Exit code `3010` indicates a successful installation that needs a restart.
 
-**Add the folder, not the executable:** your PATH entry should look like `C:\Tools\ffmpeg\bin`, not `C:\Tools\ffmpeg\bin\ffmpeg.exe`. Check the extracted folder: ZIPs often contain an extra version-named directory before `bin`. Keep your existing PATH entries; add a new one.
-
-Open a **new** PowerShell window and check:
-
-```powershell
-where.exe ffmpeg
-where.exe ffprobe
-ffmpeg -version
-ffprobe -version
-```
-
-Both programs must be found. If either is missing, correct the PATH entry using the steps above. Then **quit Molovox Labs from its tray menu and reopen it**; closing its window only minimizes it to the tray, so it will keep the old PATH until restarted.
-
-### Send the mix to Discord with VB-CABLE
-
-1. Download the Windows driver ZIP from [VB-Audio's official VB-CABLE page](https://vb-audio.com/Cable/) and extract **all** its files.
-2. Run the x64 setup program as administrator, choose **Install Driver**, and **restart Windows**. This creates the CABLE Input and CABLE Output devices; you do not add them manually.
-3. In Molovox Labs, open **Settings** and select **CABLE Input (VB-Audio Virtual Cable)** as an output. Select your headphones as an additional output if you want to hear the mix too.
-4. In Discord, open **User Settings → Voice & Video → Input Device** and choose **CABLE Output (VB-Audio Virtual Cable)**.
-5. Use **Resume listening** in Molovox Labs. For your voice as well as clips, select your physical microphone in Settings and enable **Microphone → outputs**.
-
-The names are from the cable's point of view: Molovox Labs sends audio **into CABLE Input**; Discord receives it **from CABLE Output**. VB-CABLE is optional for normal playback. Keep your physical microphone as the input in Molovox Labs to avoid routing the cable back into itself.
-
-### If MP3 imports work on one computer but not another
-
-On the failing computer, check **both** FFmpeg commands above and fully restart the app. **Add sound → Choose audio or video…** uses FFmpeg even for MP3 files. VB-CABLE is for routing audio to other apps; it is not required for importing MP3s.
-
-Choose a file, drag the IN/OUT edges, name the selection, then choose **Save sound bite**. Each bite can be up to two minutes; you can keep making bites from the same source. If an import still fails, include the exact message shown in the Add sound dialog when reporting it. MP3 cover images are ignored during audio import.
+Older releases ship as a standalone EXE. For those releases or the development EXE, install [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download) and put both [FFmpeg tools](https://www.gyan.dev/ffmpeg/builds/) on your PATH. Install VB-CABLE separately if you need the virtual microphone.
 
 ## A quick look
 
@@ -74,7 +38,7 @@ Choose a file, drag the IN/OUT edges, name the selection, then choose **Save sou
 
 ## Your files
 
-Sounds and settings stay on your computer in `%APPDATA%/QuietLab`. Updating the app keeps them. Imported media, recordings and local settings are excluded from Git.
+Sounds and settings stay on your computer in `%APPDATA%\QuietLab`. The board names, pad layout and assignments are in `soundboards.json`, and the audio files are under `sounds\`. Video sampler media and recordings are under `sampler\`. Updating the app keeps them. Imported media, recordings and local settings are excluded from Git.
 
 ## Building from source
 
@@ -85,6 +49,14 @@ You'll need Go 1.27+, Node.js, Python, and Visual Studio C++ Build Tools with th
 ```
 
 Set `VCVARS64` to your Visual Studio `vcvars64.bat` path if the script can't find it. The script runs the checks and builds one `MolovoxLabs.exe`. Docker is not required. Temporary files and Go build caches go into the ignored `.build/` folder on the project drive; keep free space on that drive.
+
+For distribution, build Windows Setup. The script runs the same application checks and writes a single setup executable to the ignored `release/` directory.
+
+```powershell
+.\scripts\build-setup.ps1 -Version 0.4.2
+```
+
+Push a version tag such as `v0.4.2` to trigger the GitHub release workflow. It verifies the consent requirement and dependency installation order before publishing the setup executable as the release asset.
 
 Source layout and development rules are in [AGENTS.md](AGENTS.md). The Windows application lives in `cmd/molovoxlabs/`; hand-written interface assets live in `web/` and are embedded at build time. Run Go commands from the repository root with `./...` for checks or `./cmd/molovoxlabs` for the application.
 

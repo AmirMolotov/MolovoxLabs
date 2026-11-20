@@ -20,7 +20,12 @@ type boardPackage struct {
 	Board   SoundBoard
 }
 
-func chooseBoardFile(owner uintptr, save bool) (string, error) {
+type boardExportSelection struct {
+	Name           string
+	Groups, Sounds []string
+}
+
+func chooseBoardFile(owner uintptr, exportName string) (string, error) {
 	description, _ := windows.UTF16FromString("Molovox Labs soundboard (*.qlboard)")
 	pattern, _ := windows.UTF16FromString("*.qlboard")
 	filter := append(description, pattern...)
@@ -29,11 +34,11 @@ func chooseBoardFile(owner uintptr, save bool) (string, error) {
 	method := "GetOpenFileNameW"
 	flags := uint32(0x1000 | 0x800 | 0x80000 | 8)
 	file := make([]uint16, 32768)
-	if save {
+	if exportName != "" {
 		title = "Export soundboard"
 		method = "GetSaveFileNameW"
 		flags = 0x800 | 0x80000 | 8 | 2
-		name, _ := windows.UTF16FromString("soundboard.qlboard")
+		name, _ := windows.UTF16FromString(exportFileStem(exportName) + ".qlboard")
 		copy(file, name)
 	}
 	titlePtr, _ := windows.UTF16PtrFromString(title)
@@ -50,7 +55,7 @@ func chooseBoardFile(owner uintptr, save bool) (string, error) {
 	}
 	return windows.UTF16ToString(file), nil
 }
-func (s *appStore) ExportBoard(id, path string) error {
+func (s *appStore) ExportBoard(id, path string, selection ...boardExportSelection) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	l, err := s.loadLibrary()
@@ -69,6 +74,43 @@ func (s *appStore) ExportBoard(id, path string) error {
 	}
 	if board.Kind == "video" {
 		return errors.New("Use the sampler recorder to export video performances; sampler board packages are not supported")
+	}
+	if len(selection) > 0 {
+		picked := selection[0]
+		export := SoundBoard{ID: board.ID, Name: strings.TrimSpace(picked.Name), Kind: board.Kind, Sounds: []SoundEntry{}}
+		if export.Name == "" || len(export.Name) > 80 || len(picked.Groups) == 0 && len(picked.Sounds) == 0 {
+			return errors.New("Name the export (up to 80 bytes) and select at least one group or sound")
+		}
+		groups := make(map[string]bool, len(picked.Groups))
+		sounds := make(map[string]bool, len(picked.Sounds))
+		for _, id := range picked.Groups {
+			groups[id] = true
+		}
+		for _, id := range picked.Sounds {
+			sounds[id] = true
+		}
+		for _, group := range board.Groups {
+			if groups[group.ID] {
+				export.Groups = append(export.Groups, group)
+			}
+		}
+		matchedSounds := 0
+		for _, sound := range board.Sounds {
+			if sounds[sound.ID] {
+				matchedSounds++
+			}
+			if !groups[sound.GroupID] {
+				if !sounds[sound.ID] {
+					continue
+				}
+				sound.GroupID = ""
+			}
+			export.Sounds = append(export.Sounds, sound)
+		}
+		if len(export.Groups) != len(groups) || matchedSounds != len(sounds) {
+			return errors.New("The board changed. Open export again and select your groups and sounds")
+		}
+		board = &export
 	}
 	f, err := os.CreateTemp(filepath.Dir(path), ".quiet-board-")
 	if err != nil {
@@ -89,15 +131,25 @@ func (s *appStore) ExportBoard(id, path string) error {
 	if _, err = w.Write(manifest); err != nil {
 		return fail(err)
 	}
+	var total int64
 	for _, sound := range board.Sounds {
-		if filepath.Base(sound.File) != sound.File {
+		if !filepath.IsLocal(sound.File) || filepath.Base(sound.File) != sound.File {
 			return fail(errors.New("Invalid stored sound path"))
 		}
 		input, err := os.Open(filepath.Join(s.root, "sounds", sound.File))
 		if err != nil {
 			return fail(err)
 		}
-		w, err = archive.Create("sounds/" + sound.File)
+		info, err := input.Stat()
+		if err == nil {
+			total += info.Size()
+			if info.Size() > 50*1024*1024 || total > 200*1024*1024 {
+				err = errors.New("Select less audio. A package can contain up to 200 MB total and 50 MB per sound")
+			}
+		}
+		if err == nil {
+			w, err = archive.Create("sounds/" + sound.File)
+		}
 		if err == nil {
 			_, err = io.Copy(w, input)
 		}

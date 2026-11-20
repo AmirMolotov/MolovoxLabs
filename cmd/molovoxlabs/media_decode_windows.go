@@ -22,6 +22,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"golang.org/x/sys/windows"
 )
 
 type MediaInfo struct {
@@ -32,8 +34,21 @@ type MediaInfo struct {
 	Frames             int64
 }
 
-// Use the installed codec tools without shipping another application executable.
 func mediaTool(name string) (string, error) {
+	if common, err := windows.KnownFolderPath(windows.FOLDERID_ProgramFilesCommonX64, 0); err == nil {
+		for _, dir := range []string{"Media", ""} {
+			path := filepath.Join(common, "Molovox Labs", dir, name+".exe")
+			if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
+				return path, nil
+			}
+		}
+	}
+	if exe, err := os.Executable(); err == nil {
+		path := filepath.Join(filepath.Dir(exe), "tools", name+".exe")
+		if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
+			return path, nil
+		}
+	}
 	if path, err := exec.LookPath(name + ".exe"); err == nil {
 		return path, nil
 	}
@@ -41,7 +56,7 @@ func mediaTool(name string) (string, error) {
 	if len(matches) > 0 {
 		return matches[len(matches)-1], nil
 	}
-	return "", errors.New("FFmpeg is needed to open this media. Install FFmpeg and restart Molovox Labs")
+	return "", errors.New("FFmpeg is needed to open this media. Install the Molovox Labs dependencies or add FFmpeg and ffprobe to PATH")
 }
 func mediaCommand(ctx context.Context, name string, args ...string) (*exec.Cmd, error) {
 	tool, err := mediaTool(name)

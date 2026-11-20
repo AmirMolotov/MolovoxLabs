@@ -84,13 +84,13 @@ test('releasing the right mouse button cannot finish a cable or save a node move
  h.window.listeners.pointerup({button:2});assert.equal(h.configured,0);assert.notEqual(vm.runInContext('patchPending',h),null);
 });
 
-test('Space and primary drag pan the viewport without moving nodes or applying routing',()=>{
+test('Space and primary drag pan the viewport from a focused checkbox without toggling it',()=>{
  const h=harness(),viewport=h.$('patchViewport'),before=h.patchOptions();
  h.currentTab='patch';
  let captured=false,prevented=false;
  Object.assign(viewport,{scrollLeft:200,scrollTop:150,classList:{add(){},remove(){},toggle(){}},
   setPointerCapture(){captured=true;},hasPointerCapture(){return captured;},releasePointerCapture(){captured=false;}});
- const key={code:'Space',target:{closest:selector=>selector.includes('button')},preventDefault(){prevented=true;}};
+ const key={code:'Space',target:{closest:selector=>selector.includes('input[type=checkbox]')||selector.includes('input,')},preventDefault(){prevented=true;}};
  for(const handler of h.document.listeners.keydown)handler(key);
  assert.equal(prevented,false);
  viewport.listeners.pointerdown({button:0,pointerId:5,clientX:80,clientY:50,currentTarget:viewport,preventDefault(){},stopPropagation(){}});
@@ -100,6 +100,15 @@ test('Space and primary drag pan the viewport without moving nodes or applying r
  h.window.listeners.pointerup({button:0,pointerId:5});assert.equal(captured,false);
  h.document.listeners.keyup[0](key);assert.equal(prevented,true);
  assert.deepEqual(h.patchOptions(),before);assert.equal(h.configured,0);
+});
+test('losing node pointer capture restores the node and allows the next pan',()=>{
+ const h=harness(),viewport=h.$('patchViewport'),before=h.patchOptions();
+ Object.assign(viewport,{classList:{add(){}},setPointerCapture(){}});
+ vm.runInContext('patchDragging={node:patchGraph.Nodes[0],card:{style:{}},pointerID:5,startX:patchGraph.Nodes[0].X,startY:patchGraph.Nodes[0].Y};patchDragging.node.X+=80;patchSpace=true',h);
+ for(const handler of h.document.listeners.lostpointercapture)handler({pointerId:5});
+ assert.deepEqual(h.patchOptions(),before);
+ viewport.listeners.pointerdown({button:0,pointerId:6,clientX:80,clientY:50,currentTarget:viewport,preventDefault(){},stopPropagation(){}});
+ assert.equal(vm.runInContext('patchPan?.pointerID',h),6);
 });
 test('duplicate effect nodes get independent settings and no inherited shortcuts or cables',()=>{
  const h=harness();

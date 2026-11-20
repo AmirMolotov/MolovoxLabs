@@ -9,20 +9,17 @@ import (
 	"unsafe"
 )
 
-func TestDoubleAltOnlyActivatesForTwoCompletedQuickTaps(t *testing.T) {
+func TestAltTapDetectorDistinguishesDoubleAndTriple(t *testing.T) {
 	for _, key := range []uint32{18, 164, 165} {
 		d := altTapDetector{}
-		if d.key(key, true, 100, false) || d.key(key, false, 150, false) || d.key(key, true, 230, false) {
-			t.Fatal("activated before second release")
-		}
-		if !d.key(key, false, 280, false) {
-			t.Fatal("quick taps not detected", key)
-		}
-		if d.key(key, true, 330, false) || d.key(key, false, 380, false) {
-			t.Fatal("third tap retriggered")
-		}
-		if !(!d.key(key, true, 430, false) && d.key(key, false, 480, false)) {
-			t.Fatal("next pair not detected")
+		for i, want := range []uint8{0, 2, 3, 0, 2} {
+			at := uint32(100 + i*120)
+			if d.key(key, true, at, false) != 0 {
+				t.Fatal("activated before release")
+			}
+			if got := d.key(key, false, at+40, false); got != want {
+				t.Fatalf("tap %d got %d, want %d", i+1, got, want)
+			}
 		}
 	}
 }
@@ -46,7 +43,7 @@ func TestDoubleAltRejectsHoldsCombinationsAndInterveningKeys(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			d := altTapDetector{}
 			for _, event := range events {
-				if d.key(event.key, event.down, event.at, event.blocked) {
+				if d.key(event.key, event.down, event.at, event.blocked) != 0 {
 					t.Fatal("unwanted activation", event)
 				}
 			}
@@ -58,7 +55,7 @@ func TestDoubleAltHandlesTickWrapAndMixedAltSides(t *testing.T) {
 	d.key(164, true, 0xffffff80, false)
 	d.key(164, false, 0xffffffb0, false)
 	d.key(165, true, 20, false)
-	if !d.key(165, false, 60, false) {
+	if d.key(165, false, 60, false) != 2 {
 		t.Fatal("tick wrap or left/right mix failed")
 	}
 }

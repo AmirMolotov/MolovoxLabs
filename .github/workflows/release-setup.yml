@@ -1,0 +1,76 @@
+name: Release Windows Setup
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Build and check Windows Setup
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$vs) { throw 'Visual Studio C++ tools are missing.' }
+          $env:VCVARS64 = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
+          .\scripts\build-setup.ps1 -Version $env:GITHUB_REF_NAME.Substring(1)
+      - name: Verify consent and prerequisite installation order
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME.Substring(1)
+          $setup = (Get-Item "release/MolovoxLabs-$version-x64-Setup.exe").FullName
+          $log = Join-Path $env:RUNNER_TEMP 'molovox-setup.log'
+          $deniedLog = Join-Path $env:RUNNER_TEMP 'molovox-setup-denied.log'
+          $app = Join-Path $env:ProgramFiles 'Molovox Labs Release Test'
+          $denied = Start-Process $setup -ArgumentList "/quiet /norestart /log `"$deniedLog`"" -Wait -PassThru -WindowStyle Hidden
+          if ($denied.ExitCode -eq 0 -or !(Select-String -LiteralPath $deniedLog -SimpleMatch 'Review the setup terms' -Quiet) -or
+              (Select-String -LiteralPath $deniedLog -SimpleMatch 'Applying execute package:' -Quiet)) {
+            Get-Content $deniedLog -Tail 80
+            throw 'Unattended setup did not require explicit terms acceptance.'
+          }
+          $result = Start-Process $setup -ArgumentList "/quiet /norestart AcceptTerms=1 InstallFolder=`"$app`" /log `"$log`"" -Wait -PassThru -WindowStyle Hidden
+          if ($result.ExitCode -notin 0, 3010) {
+            Get-Content $log -Tail 100
+            Get-ItemProperty 'HKLM:\SOFTWARE\MolovoxLabs' -Name SetupError -ErrorAction SilentlyContinue
+            throw "Setup failed ($($result.ExitCode))."
+          }
+          $prerequisites = Select-String -LiteralPath $log -SimpleMatch 'Applied execute package: Prerequisites, result: 0x0' | Select-Object -First 1
+          $application = Select-String -LiteralPath $log -SimpleMatch 'Applying execute package: Application,' | Select-Object -First 1
+          if (!$prerequisites -or !$application -or $prerequisites.LineNumber -ge $application.LineNumber) {
+            throw 'Dependencies did not finish before application installation.'
+          }
+          if (!(Test-Path (Join-Path $app 'MolovoxLabs.exe'))) { throw 'MSI did not honor the chosen install folder.' }
+          $tools = Join-Path ([Environment]::GetFolderPath('CommonProgramFiles')) 'Molovox Labs\Media'
+          $video = Join-Path $env:RUNNER_TEMP 'molovox-codecs.mp4'
+          & "$tools\ffmpeg.exe" -v error -f lavfi -i 'color=black:size=64x64' -f lavfi -i 'anullsrc' -t 1 -c:v libx264 -c:a aac $video
+          if ($LASTEXITCODE -ne 0) { throw 'Installed FFmpeg could not export H.264/AAC.' }
+          & "$tools\ffprobe.exe" -v error -show_entries stream=codec_name $video
+          if ($LASTEXITCODE -ne 0) { throw 'Installed ffprobe could not inspect the export.' }
+          $runtime = Get-ItemPropertyValue 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' -Name pv
+          if (!$runtime -or $runtime -eq '0.0.0.0') { throw 'The WebView2 runtime is missing after setup.' }
+          $device = Get-CimInstance -ClassName Win32_PnPEntity -Filter "PNPClass = 'MEDIA' AND Present = TRUE" |
+            Where-Object { $_.HardwareID -contains 'VBAudioVACWDM' }
+          if (!$device) { throw 'The VB-CABLE device is missing after setup.' }
+      - name: Publish Windows Setup
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = $env:GITHUB_REF_NAME.Substring(1)
+          gh release create $env:GITHUB_REF_NAME "release/MolovoxLabs-$version-x64-Setup.exe" --verify-tag --notes-from-tag --title "Molovox Labs $env:GITHUB_REF_NAME"

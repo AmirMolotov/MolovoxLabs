@@ -128,6 +128,12 @@ func (s *appStore) loadLibrary() (libraryState, error) {
 	}
 	return l, err
 }
+
+func (s *appStore) libraryMetadata() (libraryState, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.loadLibrary()
+}
 func (s *appStore) Library() (libraryState, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

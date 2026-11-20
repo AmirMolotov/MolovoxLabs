@@ -26,11 +26,13 @@ function renderShortcuts(){
  }
  const controls=$('workspaceShortcutList');controls.replaceChildren();
  for(const [key,action] of [
-  ['Alt, Alt','From anywhere in Windows: open Molovox Labs on the Soundboard tab.'],
+  ['Alt, Alt','Open Soundboard from anywhere in Windows.'],
+  ['Alt, Alt, Alt','Open Instruments and turn on computer keyboard mode.'],
   ['Type · Backspace · Escape','Soundboard: search, edit the search, clear it. A unique match plays automatically.'],
-  ['Space','Trimmer: toggle looping preview. Arrangement: play or pause.'],
+  ['Tap Space','Audio trimmer and Arrangement play or pause. Video trimmer toggles looping preview.'],
   ['Delete','Patch bay: remove selected nodes and their cables. Text fields keep normal editing behavior.'],
-  ['Space + drag','Pan the Patch bay or Arrangement.'],
+  ['Space + drag','Pan the trimmers, Patch bay or Arrangement.'],
+  ['[ / ]','Select the start or end trim tool, then click the timeline. Escape returns to the regular cursor.'],
   ['Wheel · Ctrl + wheel','Zoom or move sideways in trimmers, Patch bay and Arrangement.'],
   ['← / → · Shift + ← / →','Focused trim handle: adjust by 0.01 seconds or 1 second. Home / End: jump to the source edge.'],
   ['Arrow keys on a grip','Reorder a sound pad or group.'],

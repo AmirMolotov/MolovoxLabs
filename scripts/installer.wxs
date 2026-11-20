@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="Molovox Labs" Language="1033" Version="$(var.Version)" Manufacturer="Molovox Labs" UpgradeCode="C17CE59E-0F3B-4BCC-9CAF-F51BFBDCDF80">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
+    <MediaTemplate EmbedCab="yes" />
+    <MajorUpgrade Schedule="afterInstallInitialize" DowngradeErrorMessage="A newer version of Molovox Labs is already installed." />
+    <Condition Message="Install Molovox Labs using its Setup executable.">Installed OR BUNDLEAPPROVED = "1"</Condition>
+    <Property Id="BUNDLEAPPROVED" Secure="yes" />
+    <Property Id="INSTALLFOLDER" Secure="yes" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="Molovox Labs">
+          <Component Id="Application" Guid="63A8F0E8-30E2-440A-B167-6C92F14CFF4D" Win64="yes">
+            <File Id="MolovoxExe" Source="$(var.Root)\MolovoxLabs.exe" KeyPath="yes">
+              <Shortcut Id="MolovoxShortcut" Directory="ProgramMenuFolder" Name="Molovox Labs" WorkingDirectory="INSTALLFOLDER" Advertise="yes" />
+            </File>
+            <File Source="$(var.Root)\THIRD-PARTY-NOTICES.txt" />
+            <RegistryValue Root="HKLM" Key="SOFTWARE\MolovoxLabs" Name="InstallFolder" Type="string" Value="[INSTALLFOLDER]" />
+          </Component>
+        </Directory>
+      </Directory>
+      <Directory Id="CommonFiles64Folder">
+        <Directory Id="RuntimeFolder" Name="Molovox Labs">
+          <Directory Id="MediaFolder" Name="Media">
+            <Component Id="MediaTools" Guid="D3609085-BF28-49E3-AD48-C4E7D1DA85F8" Win64="yes">
+              <RegistryValue Root="HKLM" Key="SOFTWARE\MolovoxLabs" Name="MediaInstalled" Type="integer" Value="1" KeyPath="yes" />
+              <RemoveFile Id="RemoveFFmpeg" Name="ffmpeg.exe" On="uninstall" />
+              <RemoveFile Id="RemoveFFprobe" Name="ffprobe.exe" On="uninstall" />
+              <RemoveFolder Id="RemoveMediaFolder" On="uninstall" />
+            </Component>
+          </Directory>
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder" />
+    </Directory>
+    <Feature Id="Complete" Title="Molovox Labs" Level="1" Absent="disallow">
+      <ComponentRef Id="Application" />
+      <ComponentRef Id="MediaTools" />
+    </Feature>
+  </Product>
+</Wix>

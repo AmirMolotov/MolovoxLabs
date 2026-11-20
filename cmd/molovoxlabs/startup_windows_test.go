@@ -18,7 +18,8 @@ func TestWindowsStartup(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { key.Close(); registry.DeleteKey(registry.CURRENT_USER, path) })
-	command := `"C:\Apps with spaces\MolovoxLabs.exe" --data-dir "C:\Test profile"`
+	executable := `C:\Apps with spaces\MolovoxLabs.exe`
+	command := `"` + executable + `" --data-dir "C:\Test profile"`
 	for _, enabled := range []bool{false, true, false, false} {
 		if err := writeWindowsStartup(key, enabled, command); err != nil {
 			t.Fatal(err)
@@ -29,9 +30,20 @@ func TestWindowsStartup(t *testing.T) {
 		}
 		if enabled {
 			value, _, err := key.GetStringValue(startupValue)
-			if err != nil || value != command {
+			if err != nil || value != command+" --start-in-tray" {
 				t.Fatalf("command = %q, %v", value, err)
 			}
 		}
+	}
+	if err := key.SetStringValue(startupValue, command); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := upgradeWindowsStartupCommand(key, executable); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if value, _, err := key.GetStringValue(startupValue); err != nil || value != command+" --start-in-tray" {
+		t.Fatalf("upgraded command = %q, %v", value, err)
 	}
 }

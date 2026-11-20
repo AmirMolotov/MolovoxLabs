@@ -76,7 +76,7 @@ func compilePatch(p PatchBay, filters []MicFilter) (*patchProgram, error) {
 		}
 		index[node.ID] = i
 		switch node.Kind {
-		case "mic", "board", "output":
+		case "mic", "board", "output", "instrument":
 		case "app":
 			if !filepath.IsAbs(node.AppPath) || len(node.AppPath) > 1024 || strings.ContainsRune(node.AppPath, 0) || !strings.EqualFold(filepath.Ext(node.AppPath), ".exe") {
 				return nil, errors.New("Choose an application from App audio")
@@ -109,7 +109,7 @@ func compilePatch(p PatchBay, filters []MicFilter) (*patchProgram, error) {
 		if !ok1 || !ok2 || from == to {
 			return nil, errors.New("Invalid cable endpoints")
 		}
-		if p.Nodes[from].Kind == "output" || p.Nodes[to].Kind == "mic" || p.Nodes[to].Kind == "board" || p.Nodes[to].Kind == "clip" || p.Nodes[to].Kind == "app" {
+		if p.Nodes[from].Kind == "output" || p.Nodes[to].Kind == "mic" || p.Nodes[to].Kind == "board" || p.Nodes[to].Kind == "clip" || p.Nodes[to].Kind == "app" || p.Nodes[to].Kind == "instrument" {
 			return nil, errors.New("Connect source/effect outputs to effect/output inputs")
 		}
 		key := [2]int{from, to}
@@ -159,7 +159,7 @@ func compilePatch(p PatchBay, filters []MicFilter) (*patchProgram, error) {
 		node := p.Nodes[original]
 		step := patchStep{kind: node.Kind, boardID: node.BoardID, deviceID: node.DeviceID, clipID: node.ClipID, appPath: appAudioPath(node.AppPath), filter: effectIDs[node.FilterID]}
 		step.volume = 1
-		if node.Volume != nil && (node.Kind == "mic" || node.Kind == "board" || node.Kind == "clip" || node.Kind == "app") {
+		if node.Volume != nil && (node.Kind == "mic" || node.Kind == "board" || node.Kind == "clip" || node.Kind == "app" || node.Kind == "instrument") {
 			step.volume = *node.Volume
 		}
 		for _, source := range inputs[original] {
@@ -187,6 +187,8 @@ func (p *patchProgram) sample(r *renderEndpoint, mic float32, sounds *boardVoice
 		switch step.kind {
 		case "app":
 			x = r.appSample(step.appPath)
+		case "instrument":
+			x = r.instrumentSample
 		case "mic":
 			if o.MonitorMic {
 				x = mic

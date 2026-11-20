@@ -15,12 +15,7 @@ func chooseAudioExportFile(owner uintptr, name, extension string) (string, error
 	if extension != ".wav" && extension != ".mp3" && extension != ".webm" && extension != ".mp4" {
 		return "", errors.New("Unsupported audio file type")
 	}
-	name = strings.Map(func(r rune) rune {
-		if strings.ContainsRune("<>:\"/\\|?*", r) || r < 32 {
-			return '_'
-		}
-		return r
-	}, name)
+	name = exportFileStem(name)
 	kind, titleText := "Audio file", "Export original audio"
 	if extension == ".webm" {
 		kind, titleText = "Video recording", "Save sampler recording"
@@ -44,6 +39,21 @@ func chooseAudioExportFile(owner uintptr, name, extension string) (string, error
 		return "", nil
 	}
 	return windows.UTF16ToString(file), nil
+}
+func exportFileStem(name string) string {
+	name = strings.Trim(strings.Map(func(r rune) rune {
+		if strings.ContainsRune("<>:\"/\\|?*", r) || r < 32 {
+			return '_'
+		}
+		return r
+	}, name), " .")
+	if name == "" {
+		return "export"
+	}
+	if !filepath.IsLocal(name) {
+		return "_" + name
+	}
+	return name
 }
 func (s *appStore) ExportAudio(id, path string) error {
 	s.mu.Lock()

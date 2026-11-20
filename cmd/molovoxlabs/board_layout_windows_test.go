@@ -87,6 +87,58 @@ func TestBoardLayoutTravelsWithEmbeddedAudioExport(t *testing.T) {
 		t.Fatal("import lost grouping or reused audio ID", imported)
 	}
 }
+func TestSelectedBoardExportRoundTripsGroupsAndIndividualSounds(t *testing.T) {
+	s := &appStore{root: t.TempDir()}
+	if err := os.MkdirAll(filepath.Join(s.root, "sounds"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	board := SoundBoard{ID: "board", Name: "Original", Groups: []PadGroup{{ID: "alpha", Name: "Alpha"}, {ID: "beta", Name: "Beta"}, {ID: "omit", Name: "Omit"}}, Sounds: []SoundEntry{
+		{ID: "a", Name: "A", File: "a.wav", GroupID: "alpha"},
+		{ID: "b", Name: "B", File: "b.wav", GroupID: "beta"},
+		{ID: "c", Name: "C", File: "c.wav", GroupID: "omit"},
+		{ID: "d", Name: "D", File: "d.wav", GroupID: "omit"},
+		{ID: "e", Name: "E", File: "e.wav"},
+	}}
+	for _, sound := range board.Sounds {
+		if err := os.WriteFile(filepath.Join(s.root, "sounds", sound.File), wavFixture(), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.write("soundboards.json", libraryState{Boards: []SoundBoard{board}}); err != nil {
+		t.Fatal(err)
+	}
+	archive := filepath.Join(t.TempDir(), "picked.qlboard")
+	if err := s.ExportBoard(board.ID, archive, boardExportSelection{Name: "Highlights", Groups: []string{"beta", "alpha"}, Sounds: []string{"a", "c", "e"}}); err != nil {
+		t.Fatal(err)
+	}
+	dest := &appStore{root: t.TempDir()}
+	l, err := dest.ImportBoard(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	picked := l.Boards[len(l.Boards)-1]
+	if picked.Name != "Highlights" || !reflect.DeepEqual(picked.Groups, board.Groups[:2]) {
+		t.Fatalf("Wrong name or group order: %+v", picked)
+	}
+	var names, groupIDs []string
+	for _, sound := range picked.Sounds {
+		names = append(names, sound.Name)
+		groupIDs = append(groupIDs, sound.GroupID)
+		if _, err := dest.Sound(sound.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !reflect.DeepEqual(names, []string{"A", "B", "C", "E"}) || !reflect.DeepEqual(groupIDs, []string{"alpha", "beta", "", ""}) {
+		t.Fatalf("Wrong pads or membership: %v %v", names, groupIDs)
+	}
+	original, err := s.loadLibrary()
+	if err != nil || !reflect.DeepEqual(original.Boards[0], board) {
+		t.Fatalf("Export changed the original: %+v %v", original, err)
+	}
+	if err := s.ExportBoard(board.ID, archive, boardExportSelection{Name: "Invalid", Sounds: []string{"foreign"}}); err == nil {
+		t.Fatal("Accepted a sound outside the board")
+	}
+}
 func TestBoardPackagePreservesGroupAndPadOrderWithOptionalShortcuts(t *testing.T) {
 	s := &appStore{root: t.TempDir()}
 	os.MkdirAll(filepath.Join(s.root, "sounds"), 0700)

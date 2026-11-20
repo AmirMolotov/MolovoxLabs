@@ -56,6 +56,7 @@ func TestPreviewEndpointAcceptsNativeLoopFlag(t *testing.T) {
 	r.Header.Set("Origin", "http://local")
 	r.Header.Set("X-Preview-ID", "@audio-preview")
 	r.Header.Set("X-Preview-Loop", "true")
+	r.Header.Set("X-Preview-Offset", "0.05")
 	r.Header.Set("X-Sampler-Board", "test-board")
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
@@ -63,8 +64,19 @@ func TestPreviewEndpointAcceptsNativeLoopFlag(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	voice := e.voices.Load().Slots[0]
-	if !voice.Loop || voice.ID != "@audio-preview" || voice.BoardID != "test-board" {
+	if !voice.Loop || voice.ID != "@audio-preview" || voice.BoardID != "test-board" || voice.Offset != 2400 {
 		t.Fatal("Preview loop settings were lost")
+	}
+	render := &renderEndpoint{}
+	e.renders = []*renderEndpoint{render}
+	if got := e.Snapshot().Playback[0].Position; got != .05 {
+		t.Fatalf("Initial playhead = %v, want .05", got)
+	}
+	for range 2401 {
+		render.boardSample(e.voices.Load())
+	}
+	if render.soundAt[0] != 1 {
+		t.Fatalf("Resumed loop did not wrap to its original IN: %v", render.soundAt[0])
 	}
 }
 func TestMissingClipDeletionIsPersistentAndIdempotent(t *testing.T) {

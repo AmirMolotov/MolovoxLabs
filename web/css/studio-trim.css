@@ -9,3 +9,9 @@
 .toolbar-actions{flex-wrap:wrap}.sound-record-panel{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px}.sound-record-panel[hidden]{display:none}.sound-record-panel label{font-size:12px;color:#c5d7c5}.sound-record-panel input{flex:1;min-width:160px}.sound-record-panel p{width:100%;margin:0}
 
 .trim-selection{cursor:grab;pointer-events:auto;touch-action:none}.trim-track:active .trim-selection{cursor:grabbing}
+.trim-hover-line{position:absolute;inset-block:0;border-left:1px dashed #c5e6b7;pointer-events:none;z-index:2}
+.trim-editor[data-trim-tool="start"]{--trim-cursor:url(../images/trim-start.svg) 5 12,w-resize}
+.trim-editor[data-trim-tool="end"]{--trim-cursor:url(../images/trim-end.svg) 18 12,e-resize}
+.trim-editor:is([data-trim-tool="start"],[data-trim-tool="end"]) .trim-track,.trim-editor:is([data-trim-tool="start"],[data-trim-tool="end"]) .trim-selection,.trim-editor:is([data-trim-tool="start"],[data-trim-tool="end"]) .trim-handle:after{cursor:var(--trim-cursor)}
+.trim-editor.trim-space-pan .trim-track,.trim-editor.trim-space-pan .trim-selection,.trim-editor.trim-space-pan .trim-handle:after{cursor:grab}
+.trim-editor.trim-space-pan .trim-track:active,.trim-editor.trim-space-pan .trim-track:active .trim-selection,.trim-editor.trim-space-pan .trim-track:active .trim-handle:after{cursor:grabbing}
