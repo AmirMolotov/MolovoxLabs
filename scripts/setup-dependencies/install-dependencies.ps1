@@ -4,7 +4,15 @@ $ProgressPreference = 'SilentlyContinue'
 
 function Get-VerifiedArchive($Uri, $Destination, $Sha256) {
     Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $Destination -TimeoutSec 240
-    if ((Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash -ne $Sha256) {
+    $hash = [Security.Cryptography.SHA256]::Create()
+    $stream = [IO.File]::OpenRead($Destination)
+    try {
+        $actual = [BitConverter]::ToString($hash.ComputeHash($stream)).Replace('-', '')
+    } finally {
+        $stream.Dispose()
+        $hash.Dispose()
+    }
+    if ($actual -ne $Sha256) {
         throw "Download checksum mismatch: $Uri"
     }
 }

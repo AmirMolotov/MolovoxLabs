@@ -29,6 +29,8 @@ func main() {
 	powershell := filepath.Join(system, "WindowsPowerShell", "v1.0", "powershell.exe")
 	cmd := exec.Command(powershell, "-NoLogo", "-NoProfile", "-NonInteractive",
 		"-EncodedCommand", base64.StdEncoding.EncodeToString(command))
+	// The elevated setup uses Windows PowerShell's own modules even when launched from PowerShell 7.
+	cmd.Env = append(cmd.Environ(), "PSModulePath="+filepath.Join(filepath.Dir(powershell), "Modules"))
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	if err := cmd.Run(); err != nil {
 		var exit *exec.ExitError
