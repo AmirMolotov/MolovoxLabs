@@ -56,7 +56,7 @@ func TestAppMixerBindingsJoinGlobalShortcutAndMIDIValidation(t *testing.T) {
 
 func TestMixerKnobsAndGroupBindings(t *testing.T) {
 	group := appMixerGroup{ID: "music", Name: "Music", Paths: []string{`C:\Music.exe`, `C:\Radio.exe`}}
-	p := Preferences{AppMixerGroups: []appMixerGroup{group}}
+	p := Preferences{AppMixerGroups: []appMixerGroup{group, {ID: "empty", Name: "Empty", Paths: []string{}}}}
 	binding := MIDIBinding{Kind: "cc", Channel: 1, Number: 12}
 	if err := updateAppMixerBindings(&p, "@app:group-knob:music", nil, []MIDIBinding{binding}); err != nil {
 		t.Fatal(err)

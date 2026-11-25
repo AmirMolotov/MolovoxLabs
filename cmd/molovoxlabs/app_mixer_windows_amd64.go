@@ -57,7 +57,7 @@ func validateAppMixerConfig(p Preferences) error {
 	groups := make(map[string]bool, len(p.AppMixerGroups))
 	paths := map[string]bool{}
 	for _, group := range p.AppMixerGroups {
-		if group.ID == "" || len(group.ID) > 64 || strings.Contains(group.ID, ":") || groups[group.ID] || strings.TrimSpace(group.Name) == "" || len(group.Name) > 160 || len(group.Paths) == 0 || len(group.Paths) > 256 {
+		if group.ID == "" || len(group.ID) > 64 || strings.Contains(group.ID, ":") || groups[group.ID] || strings.TrimSpace(group.Name) == "" || len(group.Name) > 160 || len(group.Paths) > 256 {
 			return errors.New("Invalid app mixer group")
 		}
 		groups[group.ID] = true

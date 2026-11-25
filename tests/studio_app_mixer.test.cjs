@@ -5,13 +5,14 @@ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 test('mixer retains recent apps, caps history and assigns relative controls and groups apps by drag and drop',async()=>{
  const controls=new Map();
  const element=()=>({
-  children:[],options:[],textContent:'',
+  children:[],options:[],textContent:'',attrs:{},get firstElementChild(){return this.children[0];},
   classList:{toggle(name,on){this[name]=on;}},
   contains(child){return this.children.includes(child);},
   add(option){this.options.push(option);},
   style:{setProperty(){}},
   getAttribute(){return this.dataset.tab;},
-  setAttribute(){},
+  setAttribute(name,value){this.attrs[name]=value;},
+  focus(){this.focused=true;},select(){this.selected=true;},
   append(...children){for(const child of children){child.remove?.();child.parentNode=this;this.children.push(child);}},
   replaceChildren(...children){this.children=[];this.options=[...children];this.append(...children);},
   remove(){if(this.parentNode)this.parentNode.children=this.parentNode.children.filter(child=>child!==this);},
@@ -120,20 +121,41 @@ test('mixer retains recent apps, caps history and assigns relative controls and 
  context.openTab('appMixer');
  assert.equal(interval,250);
  assert.equal(list.children.length,10);
- const [source,target]=list.children;
+ const [source,second]=list.children;
+ const activeRows=()=>list.children.filter(row=>!row.hidden);
  const appPath=row=>row.children[0].children[1].title;
- const transfer={setData(){}},drag={dataTransfer:transfer,preventDefault(){},stopPropagation(){}};
- source.children[0].ondragstart(drag);
- await target.ondrop(drag);
- assert.deepEqual(Array.from(context.saved.AppMixerGroups[0].Paths),[appPath(target),appPath(source)]);
- assert.equal(list.children.length,8);
- const [header,members]=$('appMixerGroups').children[0].children;
- assert.equal(members.children.length,2);
- const groupShortcut=header.children[2];
+ const pills=$('appMixerGroups'),groupControls=$('appMixerGroupControls');
+ await $('appMixerNewGroup').onclick();
+ assert.equal(context.saved.AppMixerGroups[0].Paths.length,0);
+ assert.equal(pills.children[2].attrs['aria-selected'],'true');
+ assert.equal(groupControls.firstElementChild.focused,true);
+ groupControls.firstElementChild.value='Music';
+ await groupControls.firstElementChild.onchange?.();
+ await new Promise(setImmediate);
+ assert.equal(pills.children[2].firstElementChild.textContent,'Music');
+ pills.children[0].onclick();
+ const drag={dataTransfer:{setData(){}},preventDefault(){}};
+ for(const row of [source,second]){
+  row.children[0].firstElementChild.ondragstart(drag);
+  await pills.children[2].ondrop(drag);
+ }
+ assert.deepEqual(Array.from(context.saved.AppMixerGroups[0].Paths),[appPath(source),appPath(second)]);
+ assert.equal(activeRows().length,10);
+ assert.equal(source.children[0].children[2].textContent,'Music');
+ pills.children[2].onclick();
+ assert.deepEqual(activeRows(),[source,second]);
+ const groupShortcut=groupControls.children[1];
  groupShortcut.value='knob';groupShortcut.onchange();
  assert.equal(edited,'@app:group-knob:qa-group');
- const menu=source.children[4].children[1];
- menu.value='';await menu.onchange();
- assert.deepEqual(Array.from(context.saved.AppMixerGroups[0].Paths),[appPath(target)]);
- assert.equal(list.children.length,9);
+ source.children[0].firstElementChild.ondragstart(drag);
+ await pills.children[1].ondrop(drag);
+ assert.equal(source.children[0].children[2].textContent,'Ungrouped');
+ assert.deepEqual(Array.from(context.saved.AppMixerGroups[0].Paths),[appPath(second)]);
+ context.preferences.AppMixerShortcuts=[{ID:'@app:group-knob:qa-group'},{ID:'@app:up:'+appPath(second)}];
+ pills.children[2].onclick();
+ await groupControls.children[2].onclick();
+ assert.equal(context.saved.AppMixerGroups.length,0);
+ assert.deepEqual(Array.from(context.saved.AppMixerShortcuts,x=>x.ID),['@app:up:'+appPath(second)]);
+ assert.equal(second.children[0].children[2].textContent,'Ungrouped');
+ assert.equal(activeRows().length,10);
 });

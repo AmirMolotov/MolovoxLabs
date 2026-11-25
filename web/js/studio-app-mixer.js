@@ -2,18 +2,35 @@ const setAppMixerVisible=(()=>{
  const mixer=$('appMixer');
  const list=$('appMixerList');
  const status=$('appMixerStatus'),groupList=$('appMixerGroups');
- const groupBodies=new Map();
- let groupLayout='',groupSaving=false,draggedPath='';
+ const panel=$('appMixerGroupPanel'),controls=$('appMixerGroupControls'),newGroup=$('appMixerNewGroup');
+ const empty=$('appMixerEmpty'),offline=$('appMixerOffline');
+ let groupLayout='',selectedGroup=null,draggedPath='',tabs=[];
  const groups=()=>preferences?.AppMixerGroups||[];
  const samePath=(a,b)=>a.toLowerCase()===b.toLowerCase();
  const baseName=path=>path.split(/[\\/]/).pop();
- const groupFor=path=>groups().find(group=>group.Paths.some(member=>samePath(member,path)));
+ const groupFor=path=>groups().find(group=>(group.Paths||[]).some(member=>samePath(member,path)));
  const rows=new Map();
  let timer=null, visible=null, scanning=false, revision=0, writes=0, writeError='';
 
  function updateStatus(){
-  const text=writeError || (rows.size?'':'No recent app audio yet.');
-  if(status.textContent!==text)status.textContent=text;
+  if(status.textContent!==writeError)status.textContent=writeError;
+ }
+
+ function updateGroupRows(){
+  const group=groups().find(item=>item.ID===selectedGroup);
+  let visibleRows=0;
+  for(const [path,row] of rows){
+   row.element.hidden=selectedGroup!==null&&(groupFor(path)?.ID||'')!==selectedGroup;
+   if(!row.element.hidden)visibleRows++;
+  }
+  empty.hidden=visibleRows>0;
+  const text=group?(group.Paths?.length?'No recent audio in '+group.Name+'.':'Drag an app icon onto this group to add it.')
+   :selectedGroup===''?'No ungrouped apps.':'No recent app audio yet.';
+  if(empty.textContent!==text)empty.textContent=text;
+  const unavailable=(group?.Paths||[]).filter(path=>![...rows.keys()].some(recent=>samePath(path,recent)));
+  offline.hidden=!unavailable.length;
+  const members=unavailable.length?'Other members: '+unavailable.map(baseName).join(', '):'';
+  if(offline.textContent!==members)offline.textContent=members;
  }
 
  function shortcutPicker(target,label,prefix=''){
@@ -29,11 +46,9 @@ const setAppMixerVisible=(()=>{
   return select;
  }
 
- function saveGroups(update){
-  if(groupSaving)return;
-  groupSaving=true;
+ function saveGroups(update,afterSave){
   return queueSettings(async()=>{
-   const next=update(structuredClone(groups())).filter(group=>group.Paths.length);
+   const next=update(structuredClone(groups()));
    const value=snapshotPreferences();
    const retained=new Set(next.map(group=>group.ID));
    value.AppMixerGroups=next;
@@ -45,84 +60,135 @@ const setAppMixerVisible=(()=>{
    preferences=value;
    writeError='';
    syncGroups();
+   afterSave?.();
    if(currentTab==='shortcuts')renderShortcuts();
   }).catch(error=>{writeError='Could not save mixer groups. '+errorText(error);syncGroups(true);})
-   .finally(()=>{groupSaving=false;updateStatus();});
+   .finally(updateStatus);
  }
 
- function moveApp(path,groupID,targetPath){
-  if(targetPath&&samePath(path,targetPath))return;
-  const prior=groupFor(path);
-  if(groupID===prior?.ID||!groupID&&!prior)return;
+ function createGroup(path){
+  const id=crypto.randomUUID();
   return saveGroups(next=>{
-   const group=next.find(item=>item.ID===groupID);
-   for(const item of next)item.Paths=item.Paths.filter(member=>!samePath(member,path));
-   if(group)group.Paths.push(path);
-   else if(groupID==='new'){
-    next.push({ID:crypto.randomUUID(),Name:'Group '+(next.length+1),Paths:targetPath?[targetPath,path]:[path]});
+   let number=1;
+   while(next.some(group=>group.Name==='Group '+number))number++;
+   if(path)for(const group of next)group.Paths=(group.Paths||[]).filter(member=>!samePath(member,path));
+   return [...next,{ID:id,Name:'Group '+number,Paths:path?[path]:[]}];
+  },()=>{
+   selectGroup(id);
+   const name=controls.firstElementChild;
+   if(visible){name.focus();name.select();}
+  });
+ }
+
+ function moveApp(path,groupID){
+  if(groupID==='new')return createGroup(path);
+  if(groupID===(groupFor(path)?.ID||''))return;
+  return saveGroups(next=>{
+   for(const group of next){
+    group.Paths=(group.Paths||[]).filter(member=>!samePath(member,path));
+    if(group.ID===groupID)group.Paths.push(path);
    }
    return next;
+  },()=>{
+   // Keep the source view while organizing All apps; the row badge shows its destination.
+   if(selectedGroup!==null)selectGroup(groupID,true);
   });
  }
 
  function dropTarget(element,drop){
   element.ondragover=e=>{
    if(!draggedPath)return;
-   e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect='move';
+   e.preventDefault();e.dataTransfer.dropEffect='move';
    element.classList.toggle('is-drop-target',true);
   };
   element.ondragleave=e=>{if(!element.contains(e.relatedTarget))element.classList.toggle('is-drop-target',false);};
   element.ondrop=e=>{
    if(!draggedPath)return;
-   e.preventDefault();e.stopPropagation();element.classList.toggle('is-drop-target',false);
-   const path=draggedPath;draggedPath='';return drop(path);
+   e.preventDefault();
+   const path=draggedPath;endDrag();return drop(path);
   };
  }
- dropTarget(list,path=>moveApp(path,''));
+ function endDrag(){
+  draggedPath='';mixer.classList.toggle('is-grouping',false);
+  for(const target of mixer.querySelectorAll('.is-drop-target'))target.classList.toggle('is-drop-target',false);
+ }
+ newGroup.onclick=()=>createGroup();
+ dropTarget(newGroup,createGroup);
 
- function placeRow(path,row){
-  const group=groupFor(path),parent=groupBodies.get(group?.ID)||list;
-  if(row.element.parentNode!==parent)parent.append(row.element);
-  row.groupMenu.replaceChildren(new Option('Move to group…','choose'),new Option('Create new group','new'));
+ function updateRowGroup(path,row){
+  const group=groupFor(path);
+  row.badge.textContent=group?.Name||'Ungrouped';
+  row.badge.title=row.badge.textContent;
+  row.badge.classList.toggle('is-ungrouped',!group);
+  row.groupMenu.replaceChildren(new Option('Move to group\u2026','choose'),new Option('New group\u2026','new'));
   row.groupMenu.options[0].disabled=true;
-  if(group)row.groupMenu.add(new Option('Ungroup app',''));
+  if(group)row.groupMenu.add(new Option('Ungrouped',''));
   for(const destination of groups()){
    if(destination.ID!==group?.ID)row.groupMenu.add(new Option(destination.Name,destination.ID));
   }
   row.groupMenu.value='choose';
  }
 
+ function selectGroup(id,focus=false){
+  selectedGroup=id;
+  for(const tab of tabs){
+   const selected=tab.group===id;
+   tab.button.setAttribute('aria-selected',String(selected));
+   tab.button.tabIndex=selected?0:-1;
+   if(selected){
+    panel.setAttribute('aria-labelledby',tab.button.id);
+    if(focus&&visible)tab.button.focus();
+   }
+  }
+  const group=groups().find(item=>item.ID===id);
+  controls.replaceChildren();controls.hidden=!group;
+  if(group){
+   const name=document.createElement('input');
+   name.type='text';name.value=group.Name;name.maxLength=50;
+   name.setAttribute('aria-label','Group name');
+   name.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();name.blur();}};
+   name.onchange=()=>{
+    const title=name.value.trim();
+    if(!title||title===group.Name){name.value=group.Name;return;}
+    saveGroups(next=>{const item=next.find(item=>item.ID===group.ID);if(item)item.Name=title;return next;});
+   };
+   const remove=document.createElement('button');
+   remove.type='button';remove.className='text-button app-mixer-delete';remove.textContent='Delete group';
+   remove.setAttribute('aria-label','Delete '+group.Name);
+   remove.onclick=()=>saveGroups(next=>next.filter(item=>item.ID!==id),()=>selectGroup('',true));
+   controls.append(name,shortcutPicker(group.ID,group.Name,'group-'),remove);
+  }
+  updateGroupRows();
+ }
+
  function syncGroups(force=false){
   const layout=JSON.stringify(groups());
   if(!force&&layout===groupLayout)return;
   groupLayout=layout;
-  const focused=document.activeElement;
-  for(const row of rows.values())if(row.element.parentNode!==list)list.append(row.element);
-  groupBodies.clear();groupList.replaceChildren();
-  for(const group of groups()){
-   const section=document.createElement('section'),header=document.createElement('div'),body=document.createElement('div');
-   section.className='app-mixer-group';header.className='app-mixer-group-header';
-   const name=document.createElement('input');
-   name.type='text';name.value=group.Name;name.maxLength=50;
-   name.setAttribute('aria-label','Name of '+group.Name);
-   name.onchange=()=>{
-    const title=name.value.trim();
-    if(!title){name.value=group.Name;return;}
-    saveGroups(next=>{next.find(item=>item.ID===group.ID).Name=title;return next;});
+  const focusTab=groupList.contains(document.activeElement);
+  groupList.replaceChildren();
+  tabs=[{ID:null,Name:'All apps'},{ID:'',Name:'Ungrouped'},...groups()].map((group,index)=>{
+   const button=document.createElement('button');
+   button.type='button';button.id='appMixerGroupTab'+index;button.className='app-mixer-pill';
+   button.setAttribute('role','tab');button.setAttribute('aria-controls',panel.id);
+   const name=document.createElement('span');name.textContent=group.Name;button.append(name);
+   if(group.ID){
+    const paths=group.Paths||[];
+    const count=document.createElement('span');count.className='app-mixer-count';count.textContent=paths.length;
+    button.append(count);button.title=paths.map(baseName).join(', ');
+   }
+   button.onclick=()=>selectGroup(group.ID);
+   button.onkeydown=e=>{
+    const next={ArrowLeft:index-1,ArrowRight:index+1,Home:0,End:tabs.length-1}[e.key];
+    if(next===undefined)return;
+    e.preventDefault();selectGroup(tabs[(next+tabs.length)%tabs.length].group,true);
    };
-   const members=document.createElement('small');
-   members.textContent=group.Paths.length+(group.Paths.length===1?' app':' apps');
-   members.title=group.Paths.map(baseName).join(', ');
-   const ungroup=document.createElement('button');
-   ungroup.type='button';ungroup.className='text-button';ungroup.textContent='Ungroup';
-   ungroup.setAttribute('aria-label','Ungroup all apps in '+group.Name);
-   ungroup.onclick=()=>saveGroups(next=>next.filter(item=>item.ID!==group.ID));
-   header.append(name,members,shortcutPicker(group.ID,group.Name,'group-'),ungroup);
-   section.append(header,body);groupList.append(section);groupBodies.set(group.ID,body);
-   dropTarget(section,path=>moveApp(path,group.ID));
-  }
-  for(const [path,row] of rows)placeRow(path,row);
-  if(focused?.isConnected&&mixer.contains(focused)&&document.activeElement!==focused)focused.focus({preventScroll:true});
+   if(group.ID!==null)dropTarget(button,path=>moveApp(path,group.ID));
+   groupList.append(button);
+   return {group:group.ID,button};
+  });
+  for(const [path,row] of rows)updateRowGroup(path,row);
+  selectGroup(tabs.some(tab=>tab.group===selectedGroup)?selectedGroup:null,focusTab);
  }
 
  function addRow(app){
@@ -160,23 +226,21 @@ const setAppMixerVisible=(()=>{
   name.textContent=app.Name;
   name.title=app.Path;
   output.setAttribute('aria-hidden','true');
-  identity.append(icon,name);
+  const badge=document.createElement('span');badge.className='app-mixer-membership';
+  identity.append(icon,name,badge);
   const activity=document.createElement('span');
   activity.className='app-mixer-activity';
   const shortcut=shortcutPicker(app.Path,app.Name);
   const groupMenu=document.createElement('select');
   groupMenu.setAttribute('aria-label','Move '+app.Name+' to a mixer group');
   groupMenu.onchange=()=>{const destination=groupMenu.value;groupMenu.value='choose';return moveApp(app.Path,destination);};
-  identity.draggable=true;identity.title='Drag onto another app to group';
-  identity.ondragstart=e=>{
+  icon.draggable=true;icon.title='Drag to a group pill';
+  for(const image of icon.children)image.draggable=false;
+  icon.ondragstart=e=>{
    draggedPath=app.Path;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',app.Path);
    mixer.classList.toggle('is-grouping',true);
   };
-  identity.ondragend=()=>{
-   draggedPath='';mixer.classList.toggle('is-grouping',false);
-   for(const target of mixer.querySelectorAll('.is-drop-target'))target.classList.toggle('is-drop-target',false);
-  };
-  dropTarget(element,path=>moveApp(path,groupFor(app.Path)?.ID||'new',app.Path));
+  icon.ondragend=endDrag;
   const actions=document.createElement('div');
   actions.className='app-mixer-actions';
   actions.append(activity,groupMenu,shortcut);
@@ -187,7 +251,7 @@ const setAppMixerVisible=(()=>{
    input.setAttribute('aria-valuetext',percent);
    input.style.setProperty('--app-mixer-volume',input.value+'%');
   }
-  const row={element,input,showVolume,activity,groupMenu,lastPeak:0,saving:false,queued:null};
+  const row={element,input,showVolume,activity,groupMenu,badge,lastPeak:0,saving:false,queued:null};
   input.oninput=async()=>{
    const volume=Number(input.value);
    showVolume(volume);
@@ -210,18 +274,18 @@ const setAppMixerVisible=(()=>{
    writes--;
    if(!mixer.hidden)updateStatus();
   };
-  rows.set(app.Path,row);placeRow(app.Path,row);
+  rows.set(app.Path,row);list.append(element);updateRowGroup(app.Path,row);
   return row;
  }
 
  async function refresh(){
-  if(scanning||writes)return;
+  if(scanning||writes||draggedPath)return;
+  syncGroups();
   scanning=true;
   const started=revision;
   try{
    const apps=await nativeListAppMixer([...rows.keys()]);
-   if(started!==revision)return;
-   syncGroups();
+   if(started!==revision||draggedPath)return;
    const now=performance.now(),sessions=new Map(apps.map(app=>[app.Path,app]));
    const recent=new Map([...rows].map(([path,row])=>[path,row.lastPeak]));
    for(const app of apps)if(app.Playing)recent.set(app.Path,now);
@@ -246,7 +310,7 @@ const setAppMixerVisible=(()=>{
      row.showVolume(app.Volume);
     }
    }
-   updateStatus();
+   updateGroupRows();updateStatus();
   }catch(error){
    if(started!==revision)return;
    const text='Could not read app audio. '+errorText(error);
