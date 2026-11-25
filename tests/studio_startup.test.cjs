@@ -8,9 +8,9 @@ test('startup renders the saved soundboard without waiting for other tabs',async
   beginLoading:()=>()=>events.push('board ready'),paintLoading:async()=>{},initSoundboardView(){},
   initWindowsStartup:()=>events.push('startup setting'),initVST:()=>events.push('plugins'),refreshMIDI:()=>events.push('MIDI devices'),
   fillDevices:()=>false,nativeDevices:async()=>({}),initSampler:()=>events.push('sampler'),initArrangement:()=>events.push('arrangement'),
-  renderLibrary:id=>events.push('render '+id),loadFilterModels(){},updateLabels(){},initPatch(){},initSamplerPreferences:async()=>{},
-  nativeConfigure:async()=>{},options:()=>({}),start:async()=>events.push('audio'),idle(){},setLive(){},message:text=>assert.fail(text),errorText:String};
+  currentTab:'board',setAppMixerVisible:open=>assert.equal(open,false),renderLibrary:id=>events.push('render '+id),loadFilterModels(){},updateLabels(){},initPatch(){},initSamplerPreferences:async()=>{},
+  nativeStudioReady:async()=>events.push('WebView ready'),nativeConfigure:async()=>{},options:()=>({}),start:async()=>events.push('audio'),idle(){},setLive(){},message:text=>assert.fail(text),errorText:String};
  vm.createContext(h);vm.runInContext(source.slice(source.indexOf('async function init()')),h);
  await h.init();
- assert.deepEqual(events,['render saved','board ready','audio']);
+ assert.deepEqual(events,['render saved','board ready','WebView ready','audio']);
 });

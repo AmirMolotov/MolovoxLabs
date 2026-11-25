@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -58,6 +59,64 @@ func TestAppAudioValidation(t *testing.T) {
 		if _, err := compilePatch(PatchBay{Enabled: true, Nodes: []PatchNode{{ID: "a", Kind: "app", AppPath: path}}}, nil); err == nil {
 			t.Fatalf("Accepted %q", path)
 		}
+	}
+}
+
+func TestAppMixerVolumeValidation(t *testing.T) {
+	for _, percent := range []int{-1, 101} {
+		if err := setAppMixerVolume(`C:\Music\player.exe`, percent); err == nil {
+			t.Fatalf("Accepted volume %d", percent)
+		}
+	}
+	if err := setAppMixerVolume("relative.exe", 50); err == nil {
+		t.Fatal("Accepted a relative path")
+	}
+}
+
+func TestAppMixerLive(t *testing.T) {
+	if os.Getenv("MOLOVOX_APP_AUDIO_LIVE") != "1" {
+		t.Skip("Set MOLOVOX_APP_AUDIO_LIVE=1 to check the mixer with a quiet test tone")
+	}
+	path, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	child := exec.Command(path, "-test.run=^TestAppAudioCaptureChild$")
+	child.Env = append(os.Environ(), "MOLOVOX_APP_AUDIO_CHILD=1", "MOLOVOX_APP_AUDIO_TONE=1")
+	child.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { child.Process.Kill(); child.Wait() }()
+	waitFor := func(playing bool, volume int) appMixerEntry {
+		t.Helper()
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) {
+			apps, err := listAppMixer()
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, app := range apps {
+				if strings.EqualFold(app.Path, path) && app.Playing == playing && (volume < 0 || app.Volume == volume) {
+					return app
+				}
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Fatalf("Mixer did not detect test app with playing=%v volume=%d", playing, volume)
+		return appMixerEntry{}
+	}
+	initial := waitFor(true, -1)
+	defer func() {
+		if err := setAppMixerVolume(path, initial.Volume); err != nil {
+			t.Error(err)
+		}
+	}()
+	for _, volume := range []int{42, 0, 75} {
+		if err := setAppMixerVolume(path, volume); err != nil {
+			t.Fatal(err)
+		}
+		waitFor(true, volume)
 	}
 }
 func TestAppAudioCaptureChild(t *testing.T) {

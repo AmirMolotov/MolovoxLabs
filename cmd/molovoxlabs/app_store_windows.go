@@ -24,6 +24,8 @@ import (
 )
 
 type Preferences struct {
+	AppMixerShortcuts    []appMixerShortcut
+	AppMixerGroups       []appMixerGroup
 	SoundboardView       string
 	VSTFolders           []string
 	FilterGroups         []FilterGroup
@@ -60,7 +62,11 @@ type SoundBoard struct {
 	Name   string
 	Sounds []SoundEntry
 }
-type libraryState struct{ Boards []SoundBoard }
+type libraryState struct {
+	Boards       []SoundBoard
+	UndoRemovals []libraryRemoval `json:",omitempty"`
+	RedoRemovals []libraryRemoval `json:",omitempty"`
+}
 type appStore struct {
 	mu      sync.Mutex
 	mediaMu sync.Mutex
@@ -115,6 +121,9 @@ func (s *appStore) SavePreferences(p Preferences) error {
 	defer s.mu.Unlock()
 	if len(p.Inputs) > 8 || len(p.Outputs) > 8 {
 		return errors.New("Select at most eight inputs and outputs")
+	}
+	if err := validateAppMixerConfig(p); err != nil {
+		return err
 	}
 	normalizePreferences(&p)
 	p.Saved = true
@@ -344,36 +353,8 @@ func (s *appStore) SoundFile(file string) ([]float32, error) {
 	return decodeSound(data, filepath.Ext(file))
 }
 func (s *appStore) RemoveSound(id string) (libraryState, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	l, err := s.loadLibrary()
-	if err != nil {
-		return l, err
-	}
-	for i := range l.Boards {
-		for j, sound := range l.Boards[i].Sounds {
-			if sound.ID == id {
-				l.Boards[i].Sounds = append(l.Boards[i].Sounds[:j], l.Boards[i].Sounds[j+1:]...)
-				if err = s.write("soundboards.json", l); err != nil {
-					return l, err
-				}
-				shared := false
-				for _, board := range l.Boards {
-					for _, other := range board.Sounds {
-						if strings.EqualFold(other.File, sound.File) {
-							shared = true
-						}
-					}
-				}
-				if !shared && sound.File != "" && sound.File != "." && sound.File != ".." && filepath.Base(sound.File) == sound.File {
-					os.Remove(filepath.Join(s.root, "sounds", sound.File))
-				}
-				return l, nil
-			}
-		}
-	}
-	// A stale UI may retry removal after the clip was already removed on disk.
-	return l, nil
+	result, err := s.removeLibraryItem("", id, false)
+	return result.Library, err
 }
 
 // Windows' standard file picker. It returns only the explicitly chosen local file.

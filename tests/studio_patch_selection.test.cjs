@@ -1,10 +1,11 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 function harness(){
  const elements=new Map(),events={},groups=[];let cards=[];
- class El{constructor(){this.style={};this.hidden=true;this.dataset={};this.children=[];this.classes=new Set();this.classList={toggle:(name,on)=>on?this.classes.add(name):this.classes.delete(name)};this.check={};this.offsetWidth=210;this.offsetHeight=48;}querySelectorAll(){return cards;}querySelector(){return this.check;}setAttribute(){}getBoundingClientRect(){return this.rect||{left:100,top:50,right:900,bottom:550};}append(child){this.children.push(child);child.remove=()=>{this.children=this.children.filter(c=>c!==child);};}setPointerCapture(id){this.capture=id;}hasPointerCapture(id){return this.capture===id;}releasePointerCapture(){this.capture=null;}addEventListener(name,fn){(events[name]??=[]).push(fn);}contains(target){return this===target||this.children.includes(target);}focus(){this.focused=true;}}
+ class El{constructor(){this.style={};this.hidden=true;this.dataset={};this.children=[];this.classes=new Set();this.classList={toggle:(name,on)=>on?this.classes.add(name):this.classes.delete(name)};this.check={};this.offsetWidth=210;this.offsetHeight=48;}querySelectorAll(){return cards;}querySelector(){return this.check;}setAttribute(){}getBoundingClientRect(){return this.rect||{left:100,top:50,right:900,bottom:550};}append(child){this.children.push(child);child.remove=()=>{this.children=this.children.filter(c=>c!==child);};}setPointerCapture(id){this.capture=id;}hasPointerCapture(id){return this.capture===id;}releasePointerCapture(){this.capture=null;}addEventListener(name,fn){(events[name]??=[]).push(fn);}contains(target){return this===target||this.children.includes(target);}focus(){this.focused=true;}replaceChildren(){this.children=[];}get firstElementChild(){return this.children[0];}}
  const h={innerWidth:1000,innerHeight:600,patchSelectedNodes:new Set(),patchSpace:false,patchPending:null,patchDragging:null,patchPan:null,$:id=>{if(!elements.has(id))elements.set(id,new El());return elements.get(id);},patchGroupByID:id=>groups.find(g=>g.ID===id),document:{createElement:()=>new El(),addEventListener:(name,fn)=>{(events['document:'+name]??=[]).push(fn);}},window:{addEventListener:(name,fn)=>{(events[name]??=[]).push(fn);}},openPatchGroupName:()=>h.groupEditorOpened=true};
  for(const [id,left,top,right,bottom]of [['a',160,100,260,180],['b',400,200,500,280],['c',700,350,800,450]]){const card=new El();card.dataset.patchNode=id;card.rect={left,top,right,bottom};cards.push(card);}
  h.$('patchSelectionMenu').children.push(h.$('patchSelectionGroup'));vm.createContext(h);vm.runInContext(fs.readFileSync('web/js/studio-patch-selection.js','utf8'),h);
+ const patch=fs.readFileSync('web/js/studio-patch.js','utf8');vm.runInContext(patch.slice(patch.indexOf('function removePatchNodes'),patch.indexOf('async function commitPatch')),h);
  h.event=(x,y,more={})=>({button:0,pointerId:1,clientX:x,clientY:y,preventDefault(){},...more});h.ids=()=>[...h.patchSelectedNodes].sort();h.events=events;h.cards=cards;h.groups=groups;return h;
 }
 test('marquee selects intersecting visible nodes in either drag direction and shows green selection state',()=>{for(const reverse of [false,true]){const h=harness();h.beginPatchSelection(h.event(reverse?550:120,reverse?300:80));h.movePatchSelection(h.event(reverse?120:550,reverse?80:300));assert.deepEqual(h.ids(),['a','b']);assert.equal(h.cards[0].classes.has('patch-selected'),true);assert.equal(h.cards[1].check.checked,true);assert.equal(h.cards[2].classes.has('patch-selected'),false);h.finishPatchSelection();assert.equal(h.$('patchViewport').children.length,0);assert.equal(h.$('patchViewport').capture,null);}});
@@ -29,4 +30,25 @@ test('Delete keeps normal editing behavior in fields, dialogs, other tabs and fo
 });
 test('Delete ignores repeat presses, modifier combinations, empty selection and active drags',()=>{
  for(const state of ['empty','repeat','ctrl','shift','drag','pan']){const h=deletionHarness();if(state!=='empty')h.patchSelectedNodes.add('a');const event={};if(state==='repeat')event.repeat=true;if(state==='ctrl')event.ctrlKey=true;if(state==='shift')event.shiftKey=true;if(state==='drag')h.patchDragging={};if(state==='pan')h.patchPan={};h.key(event);assert.equal(h.commits,0,state);}
+});
+
+test('the effect submenu opens after Add effect is selected and connects the chosen effect',()=>{
+ const h=deletionHarness();
+ h.filterNames={gain:'Gain'};h.filterDefaults={gain:{GainDB:0}};h.micFilters=[];
+ h.insertPatchEffect=(id,filter)=>{h.inserted=[id,filter.Kind];};
+ const e=h.event(100,140,{target:{closest:()=>h.cards[1]}});
+ assert.equal(h.openPatchSelectionMenu(e),true);
+ assert.equal(h.$('patchContextChoices').hidden,true);
+ h.$('patchContextEffect').onclick();
+ assert.equal(h.$('patchContextChoices').hidden,false);
+ h.$('patchContextChoices').firstElementChild.onclick();
+ assert.deepEqual(h.inserted,['b','gain']);
+ assert.equal(h.$('patchSelectionMenu').hidden,true);
+});
+test('removing adjacent effects bridges the whole removed segment and preserves every branch',()=>{
+ const h=deletionHarness();
+ h.patchGraph.Nodes.push({ID:'d',Kind:'effect'},{ID:'e',Kind:'output'});
+ h.patchGraph.Cables=[{From:'b',To:'a'},{From:'a',To:'d'},{From:'d',To:'c'},{From:'d',To:'e'}];
+ h.patchSelectedNodes.add('a');h.patchSelectedNodes.add('d');h.key();
+ assert.deepEqual(Array.from(h.patchGraph.Cables.map(c=>c.From+'>'+c.To)),['b>c','b>e']);
 });

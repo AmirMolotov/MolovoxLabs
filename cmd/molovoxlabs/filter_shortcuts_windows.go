@@ -45,6 +45,9 @@ func triggerLibrary(l libraryState, p Preferences) libraryState {
 	for _, g := range p.FilterGroups {
 		board.Sounds = append(board.Sounds, SoundEntry{ID: "@group:" + g.ID, Hotkeys: g.Hotkeys, MIDIs: g.MIDIs})
 	}
+	for _, shortcut := range p.AppMixerShortcuts {
+		board.Sounds = append(board.Sounds, SoundEntry{ID: shortcut.ID, Hotkeys: shortcut.Hotkeys, MIDIs: shortcut.MIDIs})
+	}
 	result.Boards = append(result.Boards, board)
 	return result
 }

@@ -132,17 +132,14 @@ func TestVSTInstrumentRoutesKeyboardAndMIDIThroughPatch(t *testing.T) {
 	}
 	assertLevel(render(connected), .25)
 	assertLevel(render(unconnected), 0)
-	if !e.instruments.midiPacket(0x91 | 64<<8 | 63<<16) {
-		t.Fatal("MIDI note was not captured")
-	}
+	e.instruments.midiPacket(0x91 | 64<<8 | 63<<16)
 	assertLevel(render(connected), .25+.25*63/127)
 	e.instruments.midiPacket(0x81 | 64<<8)
 	assertLevel(render(connected), .25)
 	e.instruments.setInput(false, false)
 	assertLevel(render(connected), 0)
-	if e.instruments.midiPacket(0x90 | 60<<8 | 100<<16) {
-		t.Fatal("MIDI should reach regular triggers when instrument MIDI mode is disabled")
-	}
+	e.instruments.midiPacket(0x90 | 60<<8 | 100<<16)
+	assertLevel(render(connected), 0)
 	patch.Nodes = append(patch.Nodes, PatchNode{ID: "mic", Kind: "mic"})
 	patch.Cables = []PatchCable{{From: "mic", To: "instrument"}}
 	if _, err := compilePatch(patch, nil); err == nil {

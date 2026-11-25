@@ -175,6 +175,9 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+	if err := os.Setenv("WEBVIEW2_DEFAULT_BACKGROUND_COLOR", "FF101916"); err != nil {
+		log.Print("Could not set Studio startup color: ", err)
+	}
 	window := webview.NewWithOptions(webview.WebViewOptions{
 		DataPath: profile, AutoFocus: true,
 		WindowOptions: webview.WindowOptions{Title: windowTitle, Width: 1240, Height: 950, Center: true},
@@ -219,7 +222,27 @@ func main() {
 		triggers.mu.Unlock()
 	}
 	media.onLibraryChanged = reloadTriggers
+	refreshAfterRemoval := func(result BoardRemoval, err error) (BoardRemoval, error) {
+		if err != nil {
+			return result, err
+		}
+		if err := reloadTriggers(); err != nil {
+			result.Warnings = append(result.Warnings, "Shortcut setup needs attention: "+err.Error())
+		}
+		triggers.mu.Lock()
+		for _, sound := range result.removed {
+			delete(triggers.cache, sound.ID)
+			engine.StopSound(sound.ID)
+		}
+		triggers.mu.Unlock()
+		return result, nil
+	}
+	studioURL := fmt.Sprintf("http://%s%s", listener.Addr(), prefix+"studio.html")
+	openStudio, studioReady, stopStudioStartup := watchStudioStartup(window, studioURL, 10*time.Second)
+	defer stopStudioStartup()
 	bindings := map[string]interface{}{
+		"nativeStudioReady":     studioReady,
+		"nativeStudioRetry":     func() { window.Dispatch(openStudio) },
 		"nativeLoadArrangement": store.LoadArrangement,
 		"nativeRemoveArrangementAsset": func(id string) (ArrangementLibrary, error) {
 			if arranger.snapshot().State == "rendering" {
@@ -317,6 +340,8 @@ func main() {
 		"nativeRemoveSamplerRecording": store.RemoveRecording,
 		"nativeLoadPreferences":        store.LoadPreferences,
 		"nativeAppAudioSources":        engine.AppAudioSources,
+		"nativeListAppMixer":           listAppMixerWithIcons,
+		"nativeSetAppMixerVolume":      setAppMixerVolume,
 		"nativeLoadWindowsStartup":     loadWindowsStartup,
 		"nativeSaveWindowsStartup": func(enabled bool) error {
 			return saveWindowsStartup(enabled, *dataRoot)
@@ -329,7 +354,7 @@ func main() {
 			return engine.setInstruments(ids, store.VSTLibrary().Plugins)
 		},
 		"nativeInstrumentEditor": engine.instruments.rack.editor,
-		"nativeInstrumentInput":  triggers.instrumentInput,
+		"nativeInstrumentInput":  engine.instruments.setInput,
 		"nativeInstrumentNote":   engine.instruments.keyNote,
 		"nativeVSTInfo":          engine.vst.info,
 		"nativeVSTEditor":        engine.vst.editor,
@@ -386,7 +411,11 @@ func main() {
 			if err != nil {
 				return result, err
 			}
-			if strings.HasPrefix(target, "@") {
+			if strings.HasPrefix(target, appMixerTargetPrefix) {
+				if err = updateAppMixerBindings(&p, target, keys, midis); err != nil {
+					return result, err
+				}
+			} else if strings.HasPrefix(target, "@") {
 				if err = updateFilterBindings(&p, target, keys, midis); err != nil {
 					return result, err
 				}
@@ -436,44 +465,16 @@ func main() {
 		"nativeCreateBoard":     store.CreateBoard,
 		"nativeSaveBoardLayout": store.SaveBoardLayout,
 		"nativeRemoveBoard": func(id string) (BoardRemoval, error) {
-			old, err := store.Library()
-			if err != nil {
-				return BoardRemoval{}, err
-			}
-			result, err := store.RemoveBoard(id)
-			if err != nil {
-				return result, err
-			}
-			if err = reloadTriggers(); err != nil {
-				result.Warnings = append(result.Warnings, "Board deleted; shortcut setup needs attention: "+err.Error())
-			}
-			triggers.mu.Lock()
-			for _, board := range old.Boards {
-				if board.ID == id {
-					for _, sound := range board.Sounds {
-						delete(triggers.cache, sound.ID)
-						engine.StopSound(sound.ID)
-					}
-				}
-			}
-			triggers.mu.Unlock()
-			return result, nil
+			return refreshAfterRemoval(store.removeLibraryItem(id, "", true))
 		},
-		"nativeRemoveSound": func(id string) (libraryState, error) {
-			l, err := store.RemoveSound(id)
-			if err != nil {
-				return l, err
+		"nativeRemoveSound": func(id string) (BoardRemoval, error) {
+			if id == "" {
+				return BoardRemoval{}, errors.New("Choose a pad to remove")
 			}
-			triggers.mu.Lock()
-			delete(triggers.cache, id)
-			triggers.mu.Unlock()
-			engine.StopSound(id)
-			if err = reloadTriggers(); err != nil {
-				triggers.mu.Lock()
-				triggers.status.Message = "Clip removed; shortcut setup needs attention: " + err.Error()
-				triggers.mu.Unlock()
-			}
-			return l, nil
+			return refreshAfterRemoval(store.removeLibraryItem("", id, true))
+		},
+		"nativeChangeRemovalHistory": func(redo bool) (BoardRemoval, error) {
+			return refreshAfterRemoval(store.changeRemovalHistory(redo))
 		},
 		"nativeMIDIDevices":      midiDevices,
 		"nativeSelectMIDIInput":  triggers.SelectMIDIInput,
@@ -558,7 +559,6 @@ func main() {
 		}
 	}
 
-	window.Navigate(fmt.Sprintf("http://%s%s", listener.Addr(), prefix+"studio.html"))
 	tray, err := installDesktopTray(uintptr(window.Window()), func() {
 		window.Dispatch(func() {
 			window.Eval("window.MOLOVOX_OPEN_SOUNDBOARD=true;window.dispatchEvent(new Event('molovox-open-soundboard'));")
@@ -599,5 +599,6 @@ func main() {
 		windows.SetEvent(activation)
 		<-activationDone
 	}()
+	window.Dispatch(openStudio)
 	window.Run()
 }

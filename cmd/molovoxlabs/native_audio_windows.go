@@ -20,20 +20,21 @@ const ringSize = 8192
 const scopeSize = 256
 
 type AudioOptions struct {
-	SoundboardDelay bool
-	Patch           PatchBay
-	patchProgram    *patchProgram
-	filterChains    []*micFilterChain
-	BypassFilters   bool
-	InputGains      map[string]float32
-	Filters         []MicFilter
-	BoardVolume     float32
-	MonitorMic      bool
-	Volume          float32
-	Enabled         bool
-	Inverted        bool
-	DelayMS         float32
-	Filter          bool
+	SoundboardDelay   bool
+	SoundboardDelayMS int
+	Patch             PatchBay
+	patchProgram      *patchProgram
+	filterChains      []*micFilterChain
+	BypassFilters     bool
+	InputGains        map[string]float32
+	Filters           []MicFilter
+	BoardVolume       float32
+	MonitorMic        bool
+	Volume            float32
+	Enabled           bool
+	Inverted          bool
+	DelayMS           float32
+	Filter            bool
 }
 type InputSelection struct {
 	ID   string
@@ -263,6 +264,9 @@ func (e *nativeEngine) Configure(o AudioOptions) error {
 		if g < 0 || g > 1 || math.IsNaN(float64(g)) {
 			return errors.New("Invalid microphone gain")
 		}
+	}
+	if o.SoundboardDelayMS < 0 || o.SoundboardDelayMS > 5000 {
+		return errors.New("Soundboard delay must be between 0 and 5000 ms")
 	}
 	if err := validateFilters(o.Filters); err != nil {
 		return err
@@ -786,7 +790,11 @@ func (e *nativeEngine) PlayPreview(id string, samples []float32, board string, l
 func (e *nativeEngine) PlaySoundboard(id string, samples []float32, board string) error {
 	delay := 0
 	if options := e.options.Load(); options != nil && options.SoundboardDelay {
-		delay = sampleRate / 2
+		ms := options.SoundboardDelayMS
+		if ms == 0 {
+			ms = 500 // Profiles saved before the delay was adjustable.
+		}
+		delay = sampleRate * ms / 1000
 	}
 	return e.playSound(id, samples, false, delay, 0, board)
 }

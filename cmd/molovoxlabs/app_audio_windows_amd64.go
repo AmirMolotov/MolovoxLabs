@@ -27,7 +27,7 @@ type nativeAppInfo struct {
 	PID  uint32
 	Path [1024]uint16
 }
-type appAudioBridge struct{ list, open, read, close *windows.Proc }
+type appAudioBridge struct{ list, open, read, close, mixerList, mixerSet, mixerAdjust *windows.Proc }
 
 var appBridgeOnce sync.Once
 var appBridge *appAudioBridge
@@ -41,7 +41,10 @@ func loadAppAudioBridge() (*appAudioBridge, error) {
 			return
 		}
 		next := &appAudioBridge{}
-		for name, target := range map[string]**windows.Proc{"ql_app_list": &next.list, "ql_app_open": &next.open, "ql_app_read": &next.read, "ql_app_close": &next.close} {
+		for name, target := range map[string]**windows.Proc{
+			"ql_app_list": &next.list, "ql_app_open": &next.open, "ql_app_read": &next.read, "ql_app_close": &next.close,
+			"ql_mixer_list": &next.mixerList, "ql_mixer_set": &next.mixerSet, "ql_mixer_adjust": &next.mixerAdjust,
+		} {
 			*target, err = b.dll.FindProc(name)
 			if err != nil {
 				appBridgeError = err

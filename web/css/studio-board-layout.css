@@ -61,3 +61,12 @@
 .board-view-tools .board-delay-toggle{margin:0;font-size:11px;white-space:nowrap;color:#a8c1ac}
 .sound-pad.is-queued{border-color:#d9c589}.sound-pad.is-queued .play-icon{background:#d9c58922;color:#e4d59c}.sound-pad.is-queued .clip-time{color:#e4d59c}
 .export-board-choices{display:grid;gap:8px;max-height:42vh;overflow:auto;padding:4px}.export-board-choices label{display:flex;align-items:center;gap:8px}.export-board-choices fieldset{border:1px solid #ffffff28;border-radius:8px;margin:0;padding:8px 12px}.export-group-pads{display:grid;gap:4px;margin:6px 0 0 22px}.export-group-pads label:has(input:disabled){opacity:.65}.export-selection-actions{display:flex;gap:10px;margin-bottom:8px}
+.removal-popup{position:fixed;z-index:95;inset:auto 24px 24px auto;display:flex;align-items:center;gap:4px;max-width:calc(100vw - 48px);padding:5px;border:1px solid #57734e;border-radius:999px;background:#1a2b20;color:#e0f2d8;box-shadow:0 6px 16px #0005}
+.removal-popup[hidden]{display:none}
+#removalPopupMessage{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-inline:12px 8px;font-size:13px}
+.removal-popup button{display:grid;place-items:center;flex:0 0 40px;width:40px;height:40px;padding:0;border:0;border-radius:50%;background:#b9ed861c;color:#e0f2d8}
+.removal-popup button:hover:not(:disabled){background:#b9ed8633}
+.removal-popup button:disabled{opacity:.42;cursor:default}
+.removal-popup button:focus-visible{outline:2px solid #c6eaa8;outline-offset:-2px}
+.removal-popup svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+@media(max-width:650px){.removal-popup{right:12px;bottom:12px;max-width:calc(100vw - 24px)}}

@@ -254,36 +254,41 @@ func decodeMIDI(packet uint32) (MIDIBinding, uint32, bool) {
 	return MIDIBinding{Kind: kind, Channel: (status & 15) + 1, Number: number}, value, kind != ""
 }
 
+type midiTriggerEvent struct {
+	Binding         MIDIBinding
+	Value, Previous int
+}
+
+func (m midiTriggerEvent) pressed() bool {
+	return m.Binding.Kind != "cc" || m.Value > 0 && m.Previous <= 0
+}
+
 type midiInput struct {
 	mu               sync.Mutex
 	handle, callback uintptr
 	name             string
-	events           chan MIDIBinding
+	events           chan midiTriggerEvent
 	cc               [2048]atomic.Uint32
 	clearNotes       func()
 }
 
-func newMIDIInput(events chan MIDIBinding, instrument *instrumentBank) *midiInput {
+func newMIDIInput(events chan midiTriggerEvent, instrument *instrumentBank) *midiInput {
 	m := &midiInput{events: events, clearNotes: instrument.clearMIDINotes}
 	m.callback = windows.NewCallback(func(_, message, _, packet, _ uintptr) uintptr {
 		if message != 0x3c3 && message != 0x3cc {
 			return 0
 		}
-		if instrument.midiPacket(uint32(packet)) {
-			return 0
-		}
+		instrument.midiPacket(uint32(packet))
 		binding, value, ok := decodeMIDI(uint32(packet))
 		if !ok {
 			return 0
 		}
+		event := midiTriggerEvent{Binding: binding, Value: int(value), Previous: -1}
 		if binding.Kind == "cc" {
-			old := m.cc[(binding.Channel-1)*128+binding.Number].Swap(value)
-			if value == 0 || old != 0 {
-				return 0
-			}
+			event.Previous = int(m.cc[(binding.Channel-1)*128+binding.Number].Swap(value+1)) - 1
 		}
 		select {
-		case m.events <- binding:
+		case m.events <- event:
 		default:
 		}
 		return 0
@@ -311,13 +316,13 @@ func (m *midiInput) Open(name string) error {
 		if code != 0 {
 			return fmt.Errorf("Cannot open MIDI device (code %d); it may be in use", code)
 		}
+		for i := range m.cc {
+			m.cc[i].Store(0)
+		}
 		code, _, _ = winmm.NewProc("midiInStart").Call(m.handle)
 		if code != 0 {
 			m.closeLocked()
 			return fmt.Errorf("Cannot start MIDI input (%d)", code)
-		}
-		for i := range m.cc {
-			m.cc[i].Store(0)
 		}
 		m.name = name
 		return nil
@@ -344,9 +349,10 @@ type triggerStatus struct {
 	Message        string
 }
 type triggerMap struct {
-	MIDI   map[string]string
-	Sounds map[string]bool
-	Media  map[string]triggerMedia
+	MIDI        map[string]string
+	MixerGroups map[string][]string
+	Sounds      map[string]bool
+	Media       map[string]triggerMedia
 }
 type triggerMedia struct{ BoardID, File, Kind string }
 
@@ -398,14 +404,13 @@ type triggerService struct {
 	FilterChanged  func(Preferences)
 	SoundPlayed    func(string)
 	suspended      atomic.Bool
-	instrumentKeys bool
 	store          *appStore
 	engine         *nativeEngine
 	keys           *globalKeys
 	midi           *midiInput
 	maps           atomic.Pointer[triggerMap]
 	learn          atomic.Bool
-	events         chan MIDIBinding
+	events         chan midiTriggerEvent
 	plays          chan string
 	stop           chan struct{}
 	done           chan struct{}
@@ -415,7 +420,7 @@ type triggerService struct {
 }
 
 func newTriggerService(store *appStore, engine *nativeEngine) *triggerService {
-	t := &triggerService{store: store, engine: engine, events: make(chan MIDIBinding, 64), plays: make(chan string, 32), stop: make(chan struct{}), done: make(chan struct{}), cache: map[string][]float32{}}
+	t := &triggerService{store: store, engine: engine, events: make(chan midiTriggerEvent, 64), plays: make(chan string, 32), stop: make(chan struct{}), done: make(chan struct{}), cache: map[string][]float32{}}
 	t.keys = newGlobalKeys(func(id string) {
 		select {
 		case t.plays <- id:
@@ -433,11 +438,18 @@ func (t *triggerService) Configure(p Preferences) error {
 	if err != nil {
 		return err
 	}
+	if err = validateAppMixerConfig(p); err != nil {
+		return err
+	}
 	if err = validateBindings(triggerLibrary(l, p)); err != nil {
 		return err
 	}
 	l = activeTriggerLibrary(l, p)
 	mapping := &triggerMap{MIDI: map[string]string{}, Sounds: map[string]bool{}, Media: map[string]triggerMedia{}}
+	mapping.MixerGroups = make(map[string][]string, len(p.AppMixerGroups))
+	for _, group := range p.AppMixerGroups {
+		mapping.MixerGroups[group.ID] = group.Paths
+	}
 	for _, b := range l.Boards {
 		for _, s := range b.Sounds {
 			if !strings.HasPrefix(s.ID, "@") {
@@ -450,7 +462,7 @@ func (t *triggerService) Configure(p Preferences) error {
 		}
 	}
 	t.maps.Store(mapping)
-	if err = t.keys.Apply(l, p.GlobalKeys && !t.suspended.Load() && !t.instrumentKeys); err != nil {
+	if err = t.keys.Apply(l, p.GlobalKeys && !t.suspended.Load()); err != nil {
 		return err
 	}
 	t.keyLibrary = l
@@ -466,26 +478,10 @@ func (t *triggerService) Configure(p Preferences) error {
 func (t *triggerService) SuspendShortcuts(on bool) error {
 	t.configMu.Lock()
 	defer t.configMu.Unlock()
-	if err := t.keys.Apply(t.keyLibrary, t.globalEnabled && !on && !t.instrumentKeys); err != nil {
+	if err := t.keys.Apply(t.keyLibrary, t.globalEnabled && !on); err != nil {
 		return err
 	}
 	t.suspended.Store(on)
-	return nil
-}
-func (t *triggerService) instrumentInput(keyboard, midi bool) error {
-	t.configMu.Lock()
-	defer t.configMu.Unlock()
-	if keyboard != t.instrumentKeys {
-		if err := t.keys.Apply(t.keyLibrary, t.globalEnabled && !t.suspended.Load() && !keyboard); err != nil {
-			if !keyboard {
-				t.engine.instruments.setInput(false, midi)
-				t.instrumentKeys = false
-			}
-			return err
-		}
-		t.instrumentKeys = keyboard
-	}
-	t.engine.instruments.setInput(keyboard, midi)
 	return nil
 }
 func (t *triggerService) SelectMIDIInput(name string) error {
@@ -570,15 +566,14 @@ func (t *triggerService) loop() {
 		case <-t.stop:
 			return
 		case id := <-t.plays:
-			if t.engine.instruments.keyboard.Load() {
-				continue
-			}
 			err := t.Run(id)
 			t.mu.Lock()
 			if err != nil {
 				t.status.Message = err.Error()
 			} else {
-				if strings.HasPrefix(id, "@") {
+				if strings.HasPrefix(id, appMixerTargetPrefix) {
+					t.status.Message = "App mixer volume set by global shortcut"
+				} else if strings.HasPrefix(id, "@") {
 					t.status.Message = "Filter state changed by global shortcut"
 				} else {
 					t.status.Message = "Sound triggered by global shortcut"
@@ -586,25 +581,35 @@ func (t *triggerService) loop() {
 			}
 			t.mu.Unlock()
 		case m := <-t.events:
-			if t.engine.instruments.midi.Load() {
-				continue
-			}
-			t.mu.Lock()
-			t.status.Sequence++
-			copy := m
-			t.status.MIDI = &copy
-			t.mu.Unlock()
 			if t.learn.Load() {
+				if m.Value > 0 {
+					t.mu.Lock()
+					t.status.Sequence++
+					binding := m.Binding
+					t.status.MIDI = &binding
+					t.mu.Unlock()
+				}
 				continue
 			}
 			if mapping := t.maps.Load(); mapping != nil {
-				if id := mapping.MIDI[midiKey(m)]; id != "" {
-					err := t.Run(id)
+				if id := mapping.MIDI[midiKey(m.Binding)]; id != "" {
+					action, _ := splitAppMixerTarget(id)
+					mode, _ := strings.CutPrefix(action, "group-")
+					knob := appMixerKnob(mode)
+					if !knob && !m.pressed() {
+						continue
+					}
+					if knob && appMixerDelta(mode, m) == 0 {
+						continue
+					}
+					err := t.runTrigger(id, m)
 					t.mu.Lock()
 					if err != nil {
 						t.status.Message = err.Error()
 					} else {
-						if strings.HasPrefix(id, "@") {
+						if strings.HasPrefix(id, appMixerTargetPrefix) {
+							t.status.Message = "App mixer volume set by MIDI"
+						} else if strings.HasPrefix(id, "@") {
 							t.status.Message = "Filter state changed by MIDI"
 						} else {
 							t.status.Message = "Sound triggered by MIDI"
@@ -625,6 +630,30 @@ func (t *triggerService) Status() triggerStatus {
 	return result
 }
 func (t *triggerService) Run(id string) error {
+	return t.runTrigger(id, midiTriggerEvent{})
+}
+
+func (t *triggerService) runTrigger(id string, event midiTriggerEvent) error {
+	if strings.HasPrefix(id, appMixerTargetPrefix) {
+		action, target := splitAppMixerTarget(id)
+		mode, group := strings.CutPrefix(action, "group-")
+		if mode == "up" || mode == "down" || appMixerKnob(mode) {
+			paths := []string{target}
+			if group {
+				mapping := t.maps.Load()
+				if mapping == nil {
+					return nil
+				}
+				paths = mapping.MixerGroups[target]
+			}
+			return adjustAppMixerVolume(paths, appMixerDelta(mode, event))
+		}
+		path, percent, err := appMixerTarget(id)
+		if err != nil {
+			return err
+		}
+		return setAppMixerVolume(path, percent)
+	}
 	if !strings.HasPrefix(id, "@") {
 		// A queued key/MIDI event may belong to the board just left.
 		if mapping := t.maps.Load(); mapping == nil || !mapping.Sounds[id] {

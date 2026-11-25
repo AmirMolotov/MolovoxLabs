@@ -12,7 +12,7 @@ function defaultPatch(mode='mic',enabled=false){
  const nodes=[mic,board,out],cables=[];let last=mode==='board'?board:mic;
  micFilters.filter(f=>!f.ClipID).forEach((f,index)=>{const node=patchNode('effect',{FilterID:f.ID},310+index*260,mode==='board'?290:60);nodes.push(node);cables.push({From:last.ID,To:node.ID});last=node;});
  cables.push({From:last.ID,To:out.ID},{From:(mode==='board'?mic:board).ID,To:out.ID});
- const clips=new Set(library.Boards.flatMap(b=>b.Sounds).map(s=>s.ID));let row=0;
+ const clips=patchClipIDs();let row=0;
  for(const clipID of new Set(micFilters.filter(f=>f.ClipID&&clips.has(f.ClipID)).map(f=>f.ClipID))){const source=patchNode('clip',{ClipID:clipID},40,450+row*160);nodes.push(source);let cursor=source;micFilters.filter(f=>f.ClipID===clipID).forEach((filter,index)=>{const effect=patchNode('effect',{FilterID:filter.ID},310+index*260,source.Y);nodes.push(effect);cables.push({From:cursor.ID,To:effect.ID});cursor=effect;});cables.push({From:cursor.ID,To:out.ID});row++;}
  return {Version:1,Enabled:enabled,Preset:mode,Nodes:nodes,Cables:cables,Templates:patchGraph?.Templates||[]};
 }
@@ -33,10 +33,14 @@ function syncPatchPreset(){
  desired.Cables=desired.Cables.map(c=>({From:mapping.get(c.From),To:mapping.get(c.To)}));patchGraph=desired;
 }
 function initPatch(p,render=true){const saved=p.Options?.Patch;patchGraph=saved?.Nodes?.length?structuredClone(saved):defaultPatch();if(!patchGraph.Version){patchGraph.Preset=inferPatchPreset(patchGraph);patchGraph.Version=1;}if(render)renderPatch();}
+function patchClipIDs(){
+ const boards=[...library.Boards,...(library.UndoRemovals||[]).map(item=>item.Board)];
+ return new Set(boards.flatMap(b=>b.Sounds).map(s=>s.ID));
+}
 function patchOptions(){
  if(!patchGraph)return {Enabled:false,Nodes:[],Cables:[]};
  syncPatchPreset();
- const clips=new Set(library.Boards.flatMap(b=>b.Sounds).map(s=>s.ID)),effects=new Set(micFilters.filter(f=>!f.ClipID||clips.has(f.ClipID)).map(f=>f.ID));patchGraph.Nodes=patchGraph.Nodes.filter(n=>(n.Kind!=='effect'||effects.has(n.FilterID))&&(n.Kind!=='clip'||clips.has(n.ClipID)));
+ const clips=patchClipIDs(),effects=new Set(micFilters.filter(f=>!f.ClipID||clips.has(f.ClipID)).map(f=>f.ID));patchGraph.Nodes=patchGraph.Nodes.filter(n=>(n.Kind!=='effect'||effects.has(n.FilterID))&&(n.Kind!=='clip'||clips.has(n.ClipID)));
  const nodes=new Set(patchGraph.Nodes.map(n=>n.ID));patchGraph.Cables=patchGraph.Cables.filter(c=>nodes.has(c.From)&&nodes.has(c.To));
  if(typeof prunePatchGroups==='function')prunePatchGroups();
  return structuredClone(patchGraph);
@@ -46,7 +50,7 @@ function patchName(node){
  if(node.Kind==='mic')return 'Microphone mix';
  if(node.Kind==='instrument')return 'Instruments';
  if(node.Kind==='app')return node.AppPath?.split(/[\\/]/).pop()||'App audio';
- if(node.Kind==='clip')return library.Boards.flatMap(b=>b.Sounds).find(s=>s.ID===node.ClipID)?.Name||'Missing pad';
+ if(node.Kind==='clip')return library.Boards.flatMap(b=>b.Sounds).find(s=>s.ID===node.ClipID)?.Name||(patchClipIDs().has(node.ClipID)?'Removed pad':'Missing pad');
  if(node.Kind==='board')return node.BoardID?(library.Boards.find(b=>b.ID===node.BoardID)?.Name||'Missing board'):'All boards + video samplers';
  if(node.Kind==='effect'){const f=micFilters.find(f=>f.ID===node.FilterID);return f?filterTitle(f):'Missing effect';}
  return node.DeviceID?(devices?.Outputs?.find(d=>d.ID===node.DeviceID)?.Name||'Output device'):'Selected outputs';
@@ -76,12 +80,61 @@ function openClipEffects(clipID){
 function attachClipEffect(sourceID,kind){
  if(!filterDefaults[kind])return;
  const source=patchGraph.Nodes.find(n=>n.ID===sourceID&&n.Kind==='clip');if(!source)return;
- let output=patchGraph.Nodes.find(n=>n.Kind==='output'&&!n.DeviceID);
- const filter={ID:crypto.randomUUID(),ClipID:source.ClipID,Kind:kind,Enabled:true,Hotkeys:[],MIDIs:[],...filterDefaults[kind]};micFilters.push(filter);
  let cursor=source;const seen=new Set();while(!seen.has(cursor.ID)){seen.add(cursor.ID);const edges=patchGraph.Cables.filter(c=>c.From===cursor.ID);if(edges.length!==1)break;const next=patchGraph.Nodes.find(n=>n.ID===edges[0].To);if(next?.Kind!=='effect'||patchGraph.Cables.filter(c=>c.To===next.ID).length!==1)break;cursor=next;}
- const effect=patchNode('effect',{FilterID:filter.ID},cursor.X+260,cursor.Y);patchGraph.Nodes.push(effect);const targets=patchGraph.Cables.filter(c=>c.From===cursor.ID);patchGraph.Cables=patchGraph.Cables.filter(c=>c.From!==cursor.ID);patchGraph.Cables.push({From:cursor.ID,To:effect.ID});
- if(targets.length)for(const cable of targets)patchGraph.Cables.push({From:effect.ID,To:cable.To});else{if(!output){output=patchNode('output',{DeviceID:''},effect.X+270,effect.Y);patchGraph.Nodes.push(output);}patchGraph.Cables.push({From:effect.ID,To:output.ID});}
- patchGraph.Enabled=true;patchGraph.Preset='';renderFilters();renderGroups();commitPatch();patchStatus(filterNames[kind]+' added only to '+patchName(source)+'.');
+ insertPatchEffect(cursor.ID,{Kind:kind,Enabled:true,...filterDefaults[kind],ClipID:source.ClipID},true);
+}
+function insertPatchEffect(sourceID,template,routePad=false){
+ const source=patchGraph.Nodes.find(n=>n.ID===sourceID);
+ if(!source||source.Kind==='output'||!template)return;
+ const clipID=source.ClipID||micFilters.find(f=>f.ID===source.FilterID)?.ClipID;
+ const filter={...structuredClone(template),ID:crypto.randomUUID(),Hotkeys:[],MIDIs:[],ClipID:clipID};
+ if(filter.Kind==='vst3')filter.VSTState='';
+ const effect=patchNode('effect',{FilterID:filter.ID},source.X+260,source.Y);
+ while(patchGraph.Nodes.some(n=>Math.abs(n.X-effect.X)<patchWidth+16&&Math.abs(n.Y-effect.Y)<215))effect.Y+=215;
+ const targets=patchGraph.Cables.filter(c=>c.From===source.ID);
+ patchGraph.Nodes.push(effect);
+ patchGraph.Cables=patchGraph.Cables.filter(c=>c.From!==source.ID);
+ patchGraph.Cables.push({From:source.ID,To:effect.ID});
+ for(const cable of targets)patchGraph.Cables.push({From:effect.ID,To:cable.To});
+ if(!targets.length&&routePad){
+  let output=patchGraph.Nodes.find(n=>n.Kind==='output'&&!n.DeviceID);
+  if(!output){output=patchNode('output',{DeviceID:''},effect.X+270,effect.Y);patchGraph.Nodes.push(output);}
+  patchGraph.Cables.push({From:effect.ID,To:output.ID});
+ }
+ micFilters.push(filter);
+ patchGraph.Enabled ||= routePad;
+ patchGraph.Preset='';
+ renderFilters();renderGroups();commitPatch();
+ patchStatus(filterTitle(filter)+' added after '+patchName(source)+'.');
+}
+function removePatchNodes(removed){
+ if(!patchGraph||!removed.size)return false;
+ const effects=new Set(patchGraph.Nodes.filter(n=>n.Kind==='effect'&&removed.has(n.ID)).map(n=>n.ID));
+ const downstream=new Map();
+ for(const {From,To} of patchGraph.Cables){
+  if(!downstream.has(From))downstream.set(From,[]);
+  downstream.get(From).push(To);
+ }
+ const cables=patchGraph.Cables.filter(c=>!removed.has(c.From)&&!removed.has(c.To));
+ // Each replacement follows an existing directed path through removed effects.
+ const reachable=(id,seen)=>{
+  if(seen.has(id))return [];
+  seen.add(id);
+  if(!removed.has(id))return [id];
+  return effects.has(id)?(downstream.get(id)||[]).flatMap(to=>reachable(to,seen)):[];
+ };
+ for(const {From,To} of patchGraph.Cables){
+  if(removed.has(From)||!effects.has(To))continue;
+  for(const target of reachable(To,new Set())){
+   if(!cables.some(c=>c.From===From&&c.To===target))cables.push({From,To:target});
+  }
+ }
+ patchGraph.Preset='';patchGraph.Cables=cables;patchGraph.Nodes=patchGraph.Nodes.filter(n=>!removed.has(n.ID));
+ for(const group of patchGraph.Groups||[])group.NodeIDs=group.NodeIDs.filter(id=>!removed.has(id));
+ if(patchGraph.Groups)patchGraph.Groups=patchGraph.Groups.filter(g=>g.NodeIDs.length);
+ for(const id of removed){patchExpanded.delete(id);if(typeof patchSelectedNodes!=='undefined')patchSelectedNodes.delete(id);}
+ if(removed.has(patchPending)){patchPending=null;patchPointer=null;}
+ return true;
 }
 async function commitPatch(){renderPatch();await configure();}
 function cancelPatchInteraction(){
@@ -142,7 +195,7 @@ function renderPatch(){
   if(typeof patchNodeHidden==='function'&&patchNodeHidden(node.ID))continue;
   const card=document.createElement('article');const clip=library.Boards.flatMap(b=>b.Sounds).find(s=>s.ID===node.ClipID),isVideo=node.Kind==='board'&&library.Boards.some(b=>b.ID===node.BoardID&&b.Kind==='video');card.className='patch-node '+node.Kind+(isVideo?' video-source':'');card.style.left=node.X+'px';card.style.top=node.Y+'px';card.dataset.patchNode=node.ID;
   const header=document.createElement('div');header.className='patch-node-header';const kind=document.createElement('span');kind.className='patch-node-kind';kind.textContent=node.Kind==='clip'?(clip?.Video?'VIDEO PAD':'SOUND PAD'):isVideo?'VIDEO SAMPLER':{mic:'INPUT',app:'APP AUDIO',instrument:'VST3 INSTRUMENTS',board:'SOUNDBOARD',effect:'EFFECT',output:'OUTPUT'}[node.Kind];
-  const remove=document.createElement('button');remove.className='icon-close patch-remove';remove.setAttribute('aria-label','Remove '+patchName(node)+' from patch bay');remove.onclick=()=>{patchGraph.Preset='';patchGraph.Nodes=patchGraph.Nodes.filter(n=>n.ID!==node.ID);patchGraph.Cables=patchGraph.Cables.filter(c=>c.From!==node.ID&&c.To!==node.ID);commitPatch();};header.append(kind,remove);if(typeof decoratePatchGroupSelection==='function')decoratePatchGroupSelection(node,header,card);
+  const remove=document.createElement('button');remove.className='icon-close patch-remove';remove.setAttribute('aria-label','Remove '+patchName(node)+' from patch bay');remove.onclick=()=>{if(removePatchNodes(new Set([node.ID])))commitPatch();};header.append(kind,remove);if(typeof decoratePatchGroupSelection==='function')decoratePatchGroupSelection(node,header,card);
   header.onpointerdown=e=>{
    if(e.button!==0||e.target.closest('button,input,select'))return;
    const current=patchGraph.Nodes.find(n=>n.ID===node.ID);

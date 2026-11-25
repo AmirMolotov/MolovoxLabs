@@ -105,3 +105,14 @@ func TestSoundboardDelayPreferenceSurvivesRestart(t *testing.T) {
 		t.Fatal("delay setting was lost", err)
 	}
 }
+
+func TestSoundboardDelayUsesConfiguredMilliseconds(t *testing.T) {
+	e := delayedSoundboardEngine()
+	e.options.Store(&AudioOptions{SoundboardDelay: true, SoundboardDelayMS: 1250})
+	if err := e.PlaySoundboard("clip", []float32{.5, .5}, "board"); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.voices.Load().Slots[0].DelayFrames; got != sampleRate*1250/1000 {
+		t.Fatalf("delay in frames = %d", got)
+	}
+}

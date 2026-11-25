@@ -238,3 +238,16 @@ test('app sources refresh dynamically, retain executable identity and reject inc
  h.nativeAppAudioSources=async()=>{throw Error('Access denied');};await h.refreshPatchApps();assert.match(h.$('patchAppStatus').textContent,/Access denied/);
  h.nativeAppAudioSources=async()=>({Supported:false,Apps:[]});await h.refreshPatchApps();assert.equal(picker.disabled,true);
 });
+
+test('inserting a contextual effect preserves downstream branches and any unrelated cable',()=>{
+ const h=harness();h.filterNames={gain:'Gain'};h.renderFilters=()=>{};h.renderGroups=()=>{};
+ vm.runInContext('patchGraph.Preset="";const source=patchGraph.Nodes.find(n=>n.Kind==="mic"), board=patchGraph.Nodes.find(n=>n.Kind==="board"), output=patchGraph.Nodes.find(n=>n.Kind==="output");patchGraph.Cables.push({From:source.ID,To:output.ID});',h);
+ const initial=h.patchOptions(),source=initial.Nodes.find(n=>n.Kind==='mic');
+ const targets=initial.Cables.filter(c=>c.From===source.ID).map(c=>c.To);
+ h.insertPatchEffect(source.ID,{Kind:'gain',Enabled:true,GainDB:3});
+ const graph=h.patchOptions(),node=graph.Nodes.find(n=>n.FilterID===h.micFilters.at(-1).ID);
+ assert.deepEqual(graph.Cables.filter(c=>c.From===source.ID).map(c=>c.To),[node.ID]);
+ assert.deepEqual(graph.Cables.filter(c=>c.From===node.ID).map(c=>c.To),targets);
+ assert.equal(graph.Cables.length,initial.Cables.length+1);
+ assert.equal(h.configured,1);
+});

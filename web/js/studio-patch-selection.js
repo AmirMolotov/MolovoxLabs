@@ -9,7 +9,21 @@ function refreshPatchSelectionUI(){
 }
 function replacePatchSelection(ids){patchSelectedNodes.clear();for(const id of ids)patchSelectedNodes.add(id);refreshPatchSelectionUI();}
 function patchSelectionIntersects(a,b){return a.left<=b.right&&a.right>=b.left&&a.top<=b.bottom&&a.bottom>=b.top;}
-function closePatchSelectionMenu(){$('patchSelectionMenu').hidden=true;}
+let patchEffectSource=null,patchMenuPoint=null,patchMenuFocus=null;
+function showPatchEffectChoices(open){
+ $('patchContextChoices').hidden=!open;
+ $('patchContextEffect').setAttribute('aria-expanded',String(open));
+}
+function closePatchSelectionMenu(restoreFocus=false){
+ $('patchSelectionMenu').hidden=true;patchEffectSource=null;showPatchEffectChoices(false);
+ if(restoreFocus)patchMenuFocus?.focus({preventScroll:true});
+ patchMenuFocus=null;
+}
+function positionPatchSelectionMenu(){
+ const menu=$('patchSelectionMenu'),{x,y}=patchMenuPoint;
+ menu.style.left=Math.max(12,Math.min(x,innerWidth-(menu.offsetWidth||210)-12))+'px';
+ menu.style.top=Math.max(12,Math.min(y,innerHeight-(menu.offsetHeight||48)-12))+'px';
+}
 function beginPatchSelection(e){
  closePatchSelectionMenu();if(patchMarquee||patchSpace||e.button!==0)return;
  const viewport=$('patchViewport'),bounds=viewport.getBoundingClientRect(),initial=[...patchSelectedNodes],base=e.shiftKey||e.ctrlKey||e.metaKey?initial:[];
@@ -31,15 +45,42 @@ function finishPatchSelection(cancelled=false){
 }
 function cancelPatchSelection(){
  if(patchMarquee){finishPatchSelection(true);closePatchSelectionMenu();return true;}
- if(!$('patchSelectionMenu').hidden){closePatchSelectionMenu();return true;}return false;
+ if(!$('patchSelectionMenu').hidden){closePatchSelectionMenu(true);return true;}return false;
 }
 function openPatchSelectionMenu(e){
  if(patchPending||patchDragging||patchPan){closePatchSelectionMenu();return false;}
  if(patchMarquee){finishPatchSelection(true);return true;}
- if(!patchSelectedNodes.size){closePatchSelectionMenu();return false;}
- const menu=$('patchSelectionMenu'),button=$('patchSelectionGroup');button.textContent='Group selected ('+patchSelectedNodes.size+')';menu.hidden=false;
- menu.style.left=Math.max(12,Math.min(e.clientX,innerWidth-(menu.offsetWidth||210)-12))+'px';menu.style.top=Math.max(12,Math.min(e.clientY,innerHeight-(menu.offsetHeight||48)-12))+'px';button.focus({preventScroll:true});return true;
+ const id=e.target?.closest?.('[data-patch-node]')?.dataset.patchNode;
+ const node=id&&patchGraph?.Nodes.find(n=>n.ID===id&&n.Kind!=='output');
+ const group=id&&patchGroupByID(id);
+ if(!node&&!group&&!patchSelectedNodes.size){closePatchSelectionMenu();return false;}
+ const menu=$('patchSelectionMenu'),button=$('patchSelectionGroup'),effect=$('patchContextEffect');
+ button.hidden=!patchSelectedNodes.size;button.textContent='Group selected ('+patchSelectedNodes.size+')';
+ patchEffectSource=node||group||null;effect.hidden=!patchEffectSource;
+ showPatchEffectChoices(false);
+ patchMenuPoint={x:e.clientX,y:e.clientY};patchMenuFocus=document.activeElement;
+ menu.hidden=false;positionPatchSelectionMenu();
+ (patchEffectSource?effect:button).focus({preventScroll:true});return true;
 }
+$('patchContextEffect').onclick=()=>{
+ const source=patchEffectSource,choices=$('patchContextChoices');
+ if(!source)return;
+ if(!choices.hidden){showPatchEffectChoices(false);positionPatchSelectionMenu();return;}
+ const addChoice=(name,choose)=>{
+  const button=document.createElement('button');button.type='button';button.textContent=name;
+  button.onclick=()=>{closePatchSelectionMenu(true);choose();};
+  choices.append(button);
+ };
+ choices.replaceChildren();
+ for(const [Kind,name] of Object.entries(filterNames)){
+  addChoice(name,()=>source.NodeIDs?patchGroupAddEffect(source.ID,Kind):insertPatchEffect(source.ID,{Kind,Enabled:true,...filterDefaults[Kind]}));
+ }
+ if(!source.NodeIDs)for(const filter of micFilters.filter(f=>f.Kind==='vst3')){
+  addChoice(filterTitle(filter)+' (new instance)',()=>insertPatchEffect(source.ID,filter));
+ }
+ showPatchEffectChoices(true);positionPatchSelectionMenu();
+ choices.firstElementChild?.focus({preventScroll:true});
+};
 $('patchSelectionGroup').onclick=()=>{closePatchSelectionMenu();if(patchSelectedNodes.size)openPatchGroupName();};
 window.addEventListener('pointermove',movePatchSelection,true);
 window.addEventListener('pointerup',e=>{if(patchMarquee&&e.pointerId===patchMarquee.pointerID&&e.button===0){movePatchSelection(e);finishPatchSelection();}},true);
@@ -47,17 +88,23 @@ window.addEventListener('pointercancel',e=>{if(patchMarquee&&e.pointerId===patch
 $('patchViewport').addEventListener('lostpointercapture',e=>{if(patchMarquee&&e.pointerId===patchMarquee.pointerID)finishPatchSelection(true);});
 window.addEventListener('blur',()=>{finishPatchSelection(true);closePatchSelectionMenu();});
 document.addEventListener('pointerdown',e=>{if(!$('patchSelectionMenu').contains(e.target))closePatchSelectionMenu();},true);
-$('patchSelectionMenu').onkeydown=e=>{if(e.key==='ArrowUp'||e.key==='ArrowDown'){e.preventDefault();$('patchSelectionGroup').focus();}};
+$('patchSelectionMenu').onkeydown=e=>{
+ const choices=$('patchContextChoices');
+ if(e.key==='ArrowLeft'&&!choices.hidden){
+  e.preventDefault();showPatchEffectChoices(false);positionPatchSelectionMenu();$('patchContextEffect').focus();return;
+ }
+ if(e.key==='ArrowRight'&&e.target===$('patchContextEffect')&&choices.hidden){e.preventDefault();$('patchContextEffect').click();return;}
+ if(e.key!=='ArrowUp'&&e.key!=='ArrowDown')return;
+ const controls=[...$('patchSelectionMenu').querySelectorAll('button')].filter(button=>!button.hidden&&!button.closest('[hidden]'));
+ if(!controls.length)return;
+ e.preventDefault();
+ controls[(controls.indexOf(e.target)+(e.key==='ArrowDown'?1:-1)+controls.length)%controls.length].focus();
+};
 
 function deleteSelectedPatchNodes(){
  if(!patchGraph||!patchSelectedNodes.size)return false;
  const removed=new Set(patchGraph.Nodes.filter(n=>patchSelectedNodes.has(n.ID)).map(n=>n.ID));
- if(!removed.size)return false;
- patchGraph.Preset='';patchGraph.Nodes=patchGraph.Nodes.filter(n=>!removed.has(n.ID));
- patchGraph.Cables=patchGraph.Cables.filter(c=>!removed.has(c.From)&&!removed.has(c.To));
- for(const group of patchGraph.Groups||[])group.NodeIDs=group.NodeIDs.filter(id=>!removed.has(id));
- patchGraph.Groups=(patchGraph.Groups||[]).filter(g=>g.NodeIDs.length);
- for(const id of removed)patchExpanded.delete(id);
+ if(!removePatchNodes(removed))return false;
  patchPending=null;patchPointer=null;patchSelectedNodes.clear();closePatchSelectionMenu();
  commitPatch();patchStatus(removed.size+' '+(removed.size===1?'node removed':'nodes removed')+' from Patch bay.');return true;
 }

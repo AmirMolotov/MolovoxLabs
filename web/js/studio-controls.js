@@ -12,7 +12,7 @@ function renderFilters(){
   const actions=document.createElement('div');actions.className='filter-actions';
   const shortcut=document.createElement('button');shortcut.className='secondary';shortcut.textContent=shortcutSummary(filter)||'⌨ Shortcuts';shortcut.onclick=()=>openTriggerEditor('@filter:'+filter.ID);actions.append(shortcut);
   for(const [text,delta] of [['↑',-1],['↓',1]]){const button=document.createElement('button');button.className='secondary filter-move '+(delta<0?'move-up':'move-down');button.textContent=text;button.setAttribute('aria-label','Move '+filterTitle(filter)+' '+(delta<0?'up':'down'));button.disabled=index+delta<0||index+delta>=micFilters.length;button.onclick=()=>{[micFilters[index],micFilters[index+delta]]=[micFilters[index+delta],micFilters[index]];renderFilters();renderGroups();configure();};actions.append(button);}
-  const remove=document.createElement('button');remove.className='secondary icon-close';remove.textContent='×';remove.setAttribute('aria-label','Remove '+filterTitle(filter));remove.onclick=()=>{micFilters.splice(index,1);for(const group of filterGroups)group.FilterIDs=group.FilterIDs.filter(id=>id!==filter.ID);renderFilters();renderGroups();configure();};actions.append(remove);top.append(label,actions);card.append(top);
+  const remove=document.createElement('button');remove.className='secondary icon-close';remove.textContent='×';remove.setAttribute('aria-label','Remove '+filterTitle(filter));remove.onclick=()=>{if(patchGraph&&!['mic','board'].includes(patchGraph.Preset)&&patchGraph.Nodes.some(n=>n.FilterID===filter.ID)){removePatchNodes(new Set(patchGraph.Nodes.filter(n=>n.FilterID===filter.ID).map(n=>n.ID)));}micFilters.splice(index,1);for(const group of filterGroups)group.FilterIDs=group.FilterIDs.filter(id=>id!==filter.ID);renderFilters();renderGroups();configure();};actions.append(remove);top.append(label,actions);card.append(top);
   const controls=renderEffectParameters(filter);
   card.append(controls);$('filterCards').append(card);
  });
@@ -81,6 +81,12 @@ function syncFilterState(o){
 window.addEventListener('filter-state',event=>syncFilterState(event.detail));
 let editorID=null,pendingKey=false,pendingMIDI=false,lastMIDISequence=0,lastTriggerMessage='',triggerPollBusy=false,lastFilterRevision=0,committing=false,learningEpoch=0;
 function targetData(){
+ if(editorID?.startsWith('@app:')){
+  const target=appMixerShortcutTarget(editorID,preferences?.AppMixerGroups);
+  if(!target)return null;
+  const binding=(preferences?.AppMixerShortcuts||[]).find(item=>item.ID.toLowerCase()===editorID.toLowerCase());
+  return {...target,Keys:binding?.Hotkeys||[],MIDIs:binding?.MIDIs||[]};
+ }
  if(editorID==='@all')return {Name:'Entire filter chain',Keys:allFilterHotkeys,MIDIs:allFilterMIDIs,Description:'Toggle bypass for the whole chain. Individual filter states are preserved.'};
  if(editorID?.startsWith('@filter:')){const f=micFilters.find(f=>f.ID===editorID.slice(8));if(f)return {Name:filterTitle(f),Keys:f.Hotkeys||[],MIDIs:f.MIDIs||[],Description:'Each assigned trigger toggles this filter on or off.'};}
  if(editorID?.startsWith('@group:')){const g=filterGroups.find(g=>g.ID===editorID.slice(7));if(g)return {Name:g.Name,Keys:g.Hotkeys||[],MIDIs:g.MIDIs||[],Description:'Toggle the selected filters together, leaving other filters unchanged.'};}
@@ -92,7 +98,7 @@ async function openTriggerEditor(id){
 }
 function renderTriggerEditor(){
  const target=targetData();if(!target)return;
- $('triggerTitle').textContent=target.Name;$('triggerDescription').textContent=target.Description;$('exportAudio').hidden=!target.Sound;
+ $('triggerTitle').textContent=target.Name;$('triggerDescription').textContent=target.Description;$('exportAudio').hidden=!target.Sound;$('triggerKeyboardSection').hidden=!!target.Knob;
  $('keyList').replaceChildren();$('midiList').replaceChildren();
  const chip=(text,remove)=>{const item=document.createElement('span');item.className='trigger-chip';const label=document.createElement('span');label.textContent=text;const button=document.createElement('button');button.textContent='×';button.setAttribute('aria-label','Remove '+text);button.onclick=remove;item.append(label,button);return item;};
  target.Keys.forEach((k,index)=>$('keyList').append(chip(k.Label,()=>commitTarget(target.Keys.filter((_,i)=>i!==index),target.MIDIs))));
@@ -103,7 +109,12 @@ function renderTriggerEditor(){
 async function commitTarget(keys,midis){
  if(committing||!editorID)return;committing=true;
  try{
-  const result=await nativeSetTriggerTarget(editorID,keys,midis);library=result.Library;preferences=result.Preferences;loadFilterModels(preferences);renderPads();renderSamplerBoard();renderTriggerEditor();if(typeof renderShortcuts==='function')renderShortcuts();$('triggerStatus').textContent='Saved. All assigned triggers remain active.';
+  const target=editorID;
+  await queueSettings(async()=>{
+   const result=await nativeSetTriggerTarget(target,keys,midis);
+   library=result.Library;preferences=result.Preferences;
+  });
+  loadFilterModels(preferences);renderPads();renderSamplerBoard();renderTriggerEditor();if(typeof renderShortcuts==='function')renderShortcuts();$('triggerStatus').textContent='Saved. All assigned triggers remain active.';
  }catch(e){$('triggerStatus').textContent=errorText(e);}
  finally{committing=false;}
 }
@@ -120,7 +131,7 @@ $('addKey').onclick=async()=>{const epoch=++learningEpoch;pendingMIDI=false;pend
 $('addMIDI').onclick=async()=>{const epoch=++learningEpoch;pendingKey=false;pendingMIDI=false;showLearningButtons();const device=$('triggerMIDIInput').value;if(!device){$('triggerStatus').textContent='Connect a MIDI controller and choose it above, then press Learn MIDI. Use Refresh controllers after connecting.';$('triggerMIDIInput').focus?.();await nativeLearnMIDI(false);await nativeSuspendShortcuts(false).catch(()=>{});return;}
  try{$('triggerStatus').textContent='Opening MIDI controller…';await nativeLearnMIDI(false);await nativeSuspendShortcuts(true);await nativeSelectMIDIInput(device);if(epoch!==learningEpoch){await nativeSuspendShortcuts(false);return;}
   const settings=$('midiInput');if(![...settings.options].some(option=>option.value===device))settings.add(new Option(device,device));settings.value=device;if(preferences)preferences.MIDIInput=device;
-  const status=await nativeTriggerStatus();lastMIDISequence=status.Sequence;if(epoch!==learningEpoch){await nativeSuspendShortcuts(false);return;}pendingMIDI=true;showLearningButtons();await nativeLearnMIDI(true);if(epoch!==learningEpoch){await nativeLearnMIDI(false);await nativeSuspendShortcuts(false);return;}$('triggerStatus').textContent='Press a MIDI note or controller. Escape cancels.';
+  const status=await nativeTriggerStatus();lastMIDISequence=status.Sequence;if(epoch!==learningEpoch){await nativeSuspendShortcuts(false);return;}pendingMIDI=true;showLearningButtons();await nativeLearnMIDI(true);if(epoch!==learningEpoch){await nativeLearnMIDI(false);await nativeSuspendShortcuts(false);return;}$('triggerStatus').textContent=targetData()?.Knob?'Turn the MIDI knob. Escape cancels.':'Press a MIDI note or controller. Escape cancels.';
  }catch(e){pendingMIDI=false;showLearningButtons();await nativeSuspendShortcuts(false).catch(()=>{});$('triggerStatus').textContent='Could not start MIDI learning: '+errorText(e);}};
 function windowsKeyForEvent(event){if(event.keyCode>0&&event.keyCode<=255)return event.keyCode;if(/^F([1-9]|1[0-9]|2[0-4])$/.test(event.key))return 111+Number(event.key.slice(1));if(event.key.length===1&&/[a-z0-9]/i.test(event.key))return event.key.toUpperCase().charCodeAt(0);const codes={Space:32,Enter:13,Tab:9,Backspace:8,Delete:46,Insert:45,Home:36,End:35,PageUp:33,PageDown:34,ArrowLeft:37,ArrowUp:38,ArrowRight:39,ArrowDown:40};return codes[event.code]||0;}
 document.addEventListener('keydown',async event=>{
@@ -148,7 +159,9 @@ async function pollTriggers(){
   if(status.FilterRevision!==lastFilterRevision){lastFilterRevision=status.FilterRevision;syncFilterState(status.FilterOptions);refreshVSTCards();}
   if(status.Sequence!==lastMIDISequence){
    lastMIDISequence=status.Sequence;
-   if(pendingMIDI&&status.MIDI){pendingMIDI=false;showLearningButtons();try{await nativeLearnMIDI(false);await nativeSuspendShortcuts(false);const target=targetData();if(target)await commitTarget(target.Keys,[...target.MIDIs,status.MIDI]);}finally{await nativeLearnMIDI(false);}}
+   if(pendingMIDI&&status.MIDI){
+    if(targetData()?.Knob&&status.MIDI.Kind!=='cc'){$('triggerStatus').textContent='Turn a MIDI knob to learn its CC.';return;}
+    pendingMIDI=false;showLearningButtons();try{await nativeLearnMIDI(false);await nativeSuspendShortcuts(false);const target=targetData();if(target)await commitTarget(target.Keys,[...target.MIDIs,status.MIDI]);}finally{await nativeLearnMIDI(false);}}
   }
   if(status.Message&&status.Message!==lastTriggerMessage&&!pendingMIDI&&!pendingKey){lastTriggerMessage=status.Message;message(status.Message);}
  }catch(e){if(pendingMIDI){pendingMIDI=false;nativeLearnMIDI(false).catch(()=>{});$('triggerStatus').textContent=errorText(e);}}

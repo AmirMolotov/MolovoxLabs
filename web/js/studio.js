@@ -15,6 +15,7 @@ function openTab(name){
  if(name!=='patch'&&typeof patchFocusView!=='undefined'&&patchFocusView)togglePatchFocus(false);
  if(currentTab!==name&&typeof stopTrimLoop==='function')stopTrimLoop();currentTab=name;
  for(const tab of document.querySelectorAll('[data-tab]')){const on=tab.dataset.tab===name;tab.setAttribute('aria-selected',String(on));tab.tabIndex=on?0:-1;$(tab.getAttribute('aria-controls')).hidden=!on;}
+ setAppMixerVisible(name==='appMixer');
  if(typeof updateInstrumentInput==='function')updateInstrumentInput();
  if(name==='instruments'&&typeof openInstruments==='function')openInstruments();
  if(name==='shortcuts'&&typeof renderShortcuts==='function')renderShortcuts();
@@ -32,8 +33,8 @@ function selections(){return {
  Inputs:[...document.querySelectorAll('#inputs .device')].filter(row=>row.querySelector('[type=checkbox]').checked).map(row=>({ID:row.dataset.id,Gain:Number(row.querySelector('[type=range]').value)/100})),
  Outputs:[...document.querySelectorAll('#outputs input:checked')].map(el=>el.value)
 };}
-function options(){return {SoundboardDelay:$('boardDelay').checked,Patch:patchOptions(),Volume:Number($('master').value)/100,BoardVolume:Number($('boardVolume').value)/100,Enabled:false,MonitorMic:$('monitorMic').checked,Inverted:false,DelayMS:0,Filter:false,Filters:micFilters,BypassFilters:bypassFilters,InputGains:Object.fromEntries(selections().Inputs.map(x=>[x.ID,x.Gain]))};}
-function snapshotPreferences(){return {SoundboardView:typeof soundboardView==='string'?soundboardView:'standard',SamplerRecordingMode:$('samplerRecordingMode').value,SamplerBoardID:$('samplerBoard').value,VSTFolders:vstFolders(),Saved:true,AutoListen:$('autoListen').checked,BoardID:$('boardSelect').value,GlobalKeys:$('globalKeys').checked,MIDIInput:$('midiInput').value,...selections(),Options:options(),FilterGroups:filterGroups,AllFilterHotkeys:allFilterHotkeys,AllFilterMIDIs:allFilterMIDIs};}
+function options(){return {SoundboardDelay:$('boardDelay').checked,SoundboardDelayMS:Number($('boardDelayMS').value),Patch:patchOptions(),Volume:Number($('master').value)/100,BoardVolume:Number($('boardVolume').value)/100,Enabled:false,MonitorMic:$('monitorMic').checked,Inverted:false,DelayMS:0,Filter:false,Filters:micFilters,BypassFilters:bypassFilters,InputGains:Object.fromEntries(selections().Inputs.map(x=>[x.ID,x.Gain]))};}
+function snapshotPreferences(){return {AppMixerGroups:preferences?.AppMixerGroups||[],AppMixerShortcuts:preferences?.AppMixerShortcuts||[],SoundboardView:typeof soundboardView==='string'?soundboardView:'standard',SamplerRecordingMode:$('samplerRecordingMode').value,SamplerBoardID:$('samplerBoard').value,VSTFolders:vstFolders(),Saved:true,AutoListen:$('autoListen').checked,BoardID:$('boardSelect').value,GlobalKeys:$('globalKeys').checked,MIDIInput:$('midiInput').value,...selections(),Options:options(),FilterGroups:filterGroups,AllFilterHotkeys:allFilterHotkeys,AllFilterMIDIs:allFilterMIDIs};}
 async function save(){
  if(!ready)return false;
  clearTimeout(saveTimer);
@@ -41,7 +42,7 @@ async function save(){
  catch(e){$('saveStatus').textContent='Could not save: '+errorText(e);message(errorText(e));return false;}
 }
 function scheduleSave(){if(!ready)return;clearTimeout(saveTimer);saveTimer=setTimeout(save,180);}
-function updateLabels(){$('masterValue').textContent=$('master').value+'%';$('boardVolumeValue').textContent=$('boardVolume').value+'%';}
+function updateLabels(){$('boardDelayLabel').textContent=Number($('boardDelayMS').value)/1000+'s delay';$('masterValue').textContent=$('master').value+'%';$('boardVolumeValue').textContent=$('boardVolume').value+'%';}
 let configurePending=false,configurePromise=null,configureRefreshPatch=false;
 function configure(parametersOnly){
  updateLabels();configurePending=true;configureRefreshPatch ||= parametersOnly!==true;if(configurePromise)return configurePromise;
@@ -52,6 +53,11 @@ function configure(parametersOnly){
 }
 ['master','boardVolume'].forEach(id=>$(id).oninput=configure);
 $('monitorMic').onchange=configure;$('boardDelay').onchange=()=>configure(true);
+$('boardDelayMS').onchange=()=>{
+ const input=$('boardDelayMS');
+ if(!input.checkValidity()){input.reportValidity();input.value=preferences?.Options?.SoundboardDelayMS||500;return;}
+ configure(true);
+};
 $('autoListen').onchange=save;
 $('windowsStartup').onchange=async()=>{
  const control=$('windowsStartup'),enabled=control.checked;control.disabled=true;
@@ -145,6 +151,7 @@ window.addEventListener('pagehide',()=>{nativeStop().catch(()=>{});});
 function renderLibrary(preferred,preferredSampler){
  const previous=preferred||$('boardSelect').value;$('boardSelect').replaceChildren();
  for(const b of library.Boards.filter(b=>b.Kind!=='video'))$('boardSelect').add(new Option(b.Name,b.ID));
+ updateRemovalControls();
  if(library.Boards.some(b=>b.Kind!=='video'&&b.ID===previous))$('boardSelect').value=previous;renderPads();renderSamplerLibrary(preferredSampler,currentTab==='sampler');if(currentTab==='patch')renderPatch();
 }
 function clipKeys(sound){return sound.Hotkeys??(sound.Hotkey?[sound.Hotkey]:[]);}
@@ -160,7 +167,7 @@ function renderPads(){
   const fill=document.createElement('div');fill.className='playback-fill';pad.append(fill);
   const top=document.createElement('div');top.className='sound-pad-top';const kind=document.createElement('span');kind.className='clip-kind';kind.textContent=(sound.File?.split('.').pop()||'audio').toUpperCase();
   const remove=document.createElement('button');remove.className='pad-remove';remove.textContent='×';remove.setAttribute('aria-label','Remove '+sound.Name);
-  remove.onclick=async()=>{try{await nativeStopSound(sound.ID);library=await nativeRemoveSound(sound.ID);renderLibrary($('boardSelect').value);await configure();$('boardStatus').textContent='Sound removed.';}catch(e){message(errorText(e));}};top.append(kind,remove);pad.append(top);
+  remove.onclick=()=>removeLibraryPad(sound.ID,false);top.append(kind,remove);pad.append(top);
   const play=document.createElement('button');play.className='sound-pad-play';play.title=sound.Name;play.setAttribute('aria-label','Play or stop '+sound.Name);
   const playIcon=document.createElement('span');playIcon.className='play-icon';playIcon.textContent='▶';const title=document.createElement('strong');title.textContent=sound.Name;
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 240 36');svg.classList.add('pad-wave');svg.setAttribute('aria-hidden','true');
@@ -186,7 +193,83 @@ function updatePlayback(items){
  updateSamplerPlayback(items);updateTrimPlayback(items);updateLoopPreview(items);
 }
 $('boardSelect').onchange=async()=>{renderPads();await save();};
-let deletingBoardID=null;
+let deletingBoardID=null,removalBusy=false,removalPopupTimer=null;
+const removalPopup=$('removalPopup');
+function removalName(item){
+ return item?.PadID?item.Board.Sounds[0].Name:item?.Board.Name;
+}
+function scheduleRemovalPopupDismissal(){
+ clearTimeout(removalPopupTimer);
+ if(removalPopup.hidden||removalBusy||removalPopup.matches(':hover, :has(:focus-visible)'))return;
+ removalPopupTimer=setTimeout(()=>{removalPopup.hidden=true;},10000);
+}
+function showRemovalPopup(text){
+ removalPopup.hidden=false;
+ $('removalPopupMessage').textContent=text;
+ $('removalPopupMessage').title=text;
+ scheduleRemovalPopupDismissal();
+}
+for(const event of ['pointerenter','pointerleave','focusin','focusout']){
+ removalPopup.addEventListener(event,()=>queueMicrotask(scheduleRemovalPopupDismissal));
+}
+function updateRemovalControls(){
+ for(const action of ['Undo','Redo']){
+  const item=library[action+'Removals']?.at(-1);
+  const button=$('removal'+action);
+  button.disabled=removalBusy||!item;
+  button.title=item?action+' removal of '+removalName(item):action+' removal';
+  button.setAttribute('aria-label',button.title);
+ }
+}
+async function applyLibraryRemoval(action,status,text,restoreBoard=false){
+ if(removalBusy)return false;
+ const focused=removalPopup.querySelector('button:focus-visible');
+ removalBusy=true;updateRemovalControls();scheduleRemovalPopupDismissal();
+ try{
+  const result=await withLoading(text,()=>queueSettings(action),true);
+  library=result.Library;
+  const restored=restoreBoard&&library.Boards.find(b=>b.ID===result.BoardID);
+  renderLibrary(restored&&restored.Kind!=='video'?restored.ID:undefined,restored?.Kind==='video'?restored.ID:undefined);
+  await configure();
+  const item=library[restoreBoard?'RedoRemovals':'UndoRemovals']?.at(-1);
+  const feedback=item?(restoreBoard?'Restored ':'Removed ')+removalName(item):(restoreBoard?'Removal undone.':'Removal saved.');
+  $(status).textContent=feedback+(result.Warnings?.length?' '+result.Warnings.join(' '):'');
+  if(status!=='deleteBoardStatus')showRemovalPopup(feedback);
+  return true;
+ }catch(e){
+  $(status).textContent=errorText(e);
+  if(!removalPopup.hidden&&status!=='deleteBoardStatus')showRemovalPopup(errorText(e));
+  return false;
+ }finally{
+  removalBusy=false;updateRemovalControls();
+  if(focused&&!removalPopup.hidden)(focused.disabled?removalPopup.querySelector('button:enabled'):focused)?.focus();
+  scheduleRemovalPopupDismissal();
+ }
+}
+function removeLibraryPad(id,video){
+ return applyLibraryRemoval(()=>nativeRemoveSound(id),video?'samplerStatus':'boardStatus','Removing pad…');
+}
+function changeRemovalHistory(redo){
+ const item=library[redo?'RedoRemovals':'UndoRemovals']?.at(-1);
+ if(!item)return;
+ const status=currentTab==='sampler'?'samplerStatus':'boardStatus';
+ if(redo&&!item.PadID&&boardRecording?.board===item.Board.ID){
+  const text='Stop and save this board’s recording before removing it.';
+  $(status).textContent=text;showRemovalPopup(text);return;
+ }
+ return applyLibraryRemoval(()=>nativeChangeRemovalHistory(redo),status,redo?'Redoing removal…':'Restoring from history…',!redo);
+}
+$('removalUndo').onclick=()=>changeRemovalHistory(false);
+$('removalRedo').onclick=()=>changeRemovalHistory(true);
+document.addEventListener('keydown',e=>{
+ if(!['board','sampler'].includes(currentTab)||e.defaultPrevented||e.repeat||e.isComposing||e.altKey||!(e.ctrlKey||e.metaKey))return;
+ if(document.querySelector('dialog[open]')||e.target.closest?.('input,textarea,select,[contenteditable]:not([contenteditable="false"])'))return;
+ const key=e.key.toLowerCase();
+ if(key!=='z'&&key!=='y')return;
+ const redo=key==='y'||e.shiftKey;
+ if(!library[redo?'RedoRemovals':'UndoRemovals']?.length)return;
+ e.preventDefault();changeRemovalHistory(redo);
+});
 function requestBoardDeletion(id){
  if(boardRecording?.board===id){message('Stop and save this board’s recording before deleting it.');return;}
  const board=library.Boards.find(b=>b.ID===id);if(!board)return;
@@ -198,10 +281,16 @@ $('samplerDeleteBoard').onclick=()=>requestBoardDeletion($('samplerBoard').value
 function cancelBoardDeletion(){$('deleteBoardDialog').close();deletingBoardID=null;}
 $('closeDeleteBoard').onclick=cancelBoardDeletion;$('cancelDeleteBoard').onclick=cancelBoardDeletion;
 $('confirmDeleteBoard').onclick=async()=>{
- if(!deletingBoardID)return;const id=deletingBoardID,index=library.Boards.findIndex(b=>b.ID===id);$('confirmDeleteBoard').disabled=true;
- try{clearTimeout(saveTimer);const result=await withLoading('Deleting soundboard…',()=>nativeRemoveBoard(id),true);library=result.Library;renderLibrary(library.Boards[Math.min(Math.max(index,0),library.Boards.length-1)]?.ID);await save();cancelBoardDeletion();$('boardStatus').textContent='Soundboard deleted.'+((result.Warnings||[]).length?' '+result.Warnings.join(' '):'');}
- catch(e){$('deleteBoardStatus').textContent=errorText(e);}
- finally{$('confirmDeleteBoard').disabled=false;}
+ if(!deletingBoardID||removalBusy)return;
+ const id=deletingBoardID,board=library.Boards.find(b=>b.ID===id);
+ $('confirmDeleteBoard').disabled=true;
+ try{
+  if(await applyLibraryRemoval(()=>nativeRemoveBoard(id),'deleteBoardStatus','Removing board…')){
+   $(board?.Kind==='video'?'samplerStatus':'boardStatus').textContent=$('deleteBoardStatus').textContent;
+   cancelBoardDeletion();
+   showRemovalPopup(board?'Removed '+board.Name:'Board removed.');
+  }
+ }finally{$('confirmDeleteBoard').disabled=false;}
 };
 
 $('createBoard').onclick=async()=>{try{library=await nativeCreateBoard($('boardName').value);$('boardName').value='';renderLibrary(library.Boards.at(-1).ID);await save();}catch(e){message(errorText(e));}};
@@ -216,7 +305,7 @@ async function init(){
  let missing=false;
  try{
   await paintLoading();
-  preferences=await nativeLoadPreferences();initSoundboardView(preferences.SoundboardView);const o=preferences.Options||{};$('boardDelay').checked=!!o.SoundboardDelay;
+  preferences=await nativeLoadPreferences();initSoundboardView(preferences.SoundboardView);const o=preferences.Options||{};$('boardDelay').checked=!!o.SoundboardDelay;$('boardDelayMS').value=o.SoundboardDelayMS||500;
   $('master').value=Math.round((o.Volume??1)*100);$('boardVolume').value=Math.round((o.BoardVolume??1)*100);$('monitorMic').checked=!!(o.MonitorMic||o.Enabled);$('autoListen').checked=preferences.AutoListen??true;$('globalKeys').checked=preferences.GlobalKeys??true;
   $('vstFolders').value=(preferences.VSTFolders||[]).join('\n');
   if(preferences.MIDIInput){$('midiInput').add(new Option(preferences.MIDIInput,preferences.MIDIInput));$('midiInput').value=preferences.MIDIInput;}
@@ -224,9 +313,12 @@ async function init(){
   library=await response.json();loadFilterModels(preferences,false);updateLabels();initPatch(preferences,false);
   missing=fillDevices(await nativeDevices(),preferences);await initSamplerPreferences(preferences);
   renderLibrary(preferences.BoardID,preferences.SamplerBoardID);
-  ready=true;wantListening=$('autoListen').checked;$('pause').disabled=false;
+  ready=true;setAppMixerVisible(currentTab==='appMixer');wantListening=$('autoListen').checked;$('pause').disabled=false;
  }catch(e){setLive(false);message('Could not open Studio: '+errorText(e));return;}
- finally{finishLoading();}
+ finally{
+  finishLoading();
+  if(typeof nativeStudioReady==='function')nativeStudioReady().catch(console.error);
+ }
  idle();
  if(wantListening&&!missing){await start(false);if(!preferences.Saved)await save();}
  else{

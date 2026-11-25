@@ -112,9 +112,9 @@ func (b *instrumentBank) keyNote(note, velocity uint32) error {
 	return nil
 }
 
-func (b *instrumentBank) midiPacket(packet uint32) bool {
+func (b *instrumentBank) midiPacket(packet uint32) {
 	if !b.midi.Load() {
-		return false
+		return
 	}
 	status := packet & 255
 	channel := status & 15
@@ -136,7 +136,6 @@ func (b *instrumentBank) midiPacket(packet uint32) bool {
 			}
 		}
 	}
-	return true
 }
 
 func (n *instrumentVoice) collect(b *instrumentBank) int {

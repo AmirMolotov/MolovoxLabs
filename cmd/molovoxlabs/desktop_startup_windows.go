@@ -4,10 +4,58 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"time"
 	"unsafe"
+
+	webview "github.com/jchv/go-webview2"
 
 	"golang.org/x/sys/windows"
 )
+
+// Startup callbacks run on the WebView thread. Ignore a timeout that was
+// already dispatched when the page reported that it had loaded.
+func watchStudioStartup(window webview.WebView, url string, timeout time.Duration) (start, ready, stop func()) {
+	var timer *time.Timer
+	stop = func() {
+		if timer != nil {
+			timer.Stop()
+			timer = nil
+		}
+	}
+	var load func(retried bool)
+	load = func(retried bool) {
+		window.Navigate(url)
+		var next *time.Timer
+		next = time.AfterFunc(timeout, func() {
+			window.Dispatch(func() {
+				if timer != next {
+					return
+				}
+				if !retried {
+					log.Print("Studio did not report startup; retrying navigation")
+					load(true)
+					return
+				}
+				stop()
+				log.Print("Studio did not report startup after retry")
+				window.SetHtml(studioStartupError)
+			})
+		})
+		timer = next
+	}
+	start = func() { stop(); load(false) }
+	ready = func() {
+		stop()
+		log.Print("Studio startup completed")
+	}
+	return start, ready, stop
+}
+
+const studioStartupError = `<!doctype html><meta charset="utf-8"><title>Molovox Labs startup</title>
+<body style="background:#101916;color:#e7eeec;font:16px Segoe UI,sans-serif;padding:2rem">
+<h1>Studio didn't load</h1><p>Retry opening Studio.</p>
+<button onclick="nativeStudioRetry()">Retry</button></body>`
 
 type desktopWindowPosition struct {
 	window, after uintptr

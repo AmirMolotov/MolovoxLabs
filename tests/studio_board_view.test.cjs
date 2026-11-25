@@ -24,5 +24,5 @@ test('switching views moves existing controls into the compact menu and restores
 });
 test('the chosen view is part of the existing preferences payload and missing legacy settings use Standard',()=>{
  const {h}=harness();h.initSoundboardView(undefined);assert.equal(vm.runInContext('soundboardView',h),'standard');h.$('boardViewCompact').onclick();
- Object.assign(h,{vstFolders:()=>[],selections:()=>({}),options:()=>({}),filterGroups:[],allFilterHotkeys:[],allFilterMIDIs:[]});const source=fs.readFileSync('web/js/studio.js','utf8');vm.runInContext(source.slice(source.indexOf('function snapshotPreferences'),source.indexOf('async function save')),h);assert.equal(h.snapshotPreferences().SoundboardView,'compact');
+ Object.assign(h,{preferences:{AppMixerShortcuts:[{ID:"@app:20:C:\\Player.exe"}]},vstFolders:()=>[],selections:()=>({}),options:()=>({}),filterGroups:[],allFilterHotkeys:[],allFilterMIDIs:[]});const source=fs.readFileSync('web/js/studio.js','utf8');vm.runInContext(source.slice(source.indexOf('function snapshotPreferences'),source.indexOf('async function save')),h);assert.equal(h.snapshotPreferences().SoundboardView,'compact');assert.equal(h.snapshotPreferences().AppMixerShortcuts,h.preferences.AppMixerShortcuts);
 });

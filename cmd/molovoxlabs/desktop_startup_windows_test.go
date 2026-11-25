@@ -3,9 +3,13 @@
 package main
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"runtime"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -62,5 +66,37 @@ func TestTrayStartupCreatesWebViewWithoutShowingWindow(t *testing.T) {
 	user32.NewProc("ShowWindow").Call(hwnd, 0)
 	if visible == 0 {
 		t.Fatal("tray could not open the startup window")
+	}
+
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/studio.html" {
+			http.NotFound(w, r)
+			return
+		}
+		if requests.Add(1) == 1 {
+			w.WriteHeader(http.StatusNoContent) // Leave the WebView on its blank document.
+			return
+		}
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, "<!doctype html><script>nativeStudioReady()</script>")
+	}))
+	defer server.Close()
+	open, ready, stop := watchStudioStartup(window, server.URL+"/studio.html", 250*time.Millisecond)
+	defer stop()
+	loaded := false
+	if err := window.Bind("nativeStudioReady", func() {
+		ready()
+		loaded = true
+		window.Dispatch(window.Terminate)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	guard := time.AfterFunc(5*time.Second, func() { window.Dispatch(window.Terminate) })
+	defer guard.Stop()
+	window.Dispatch(open)
+	window.Run()
+	if !loaded || requests.Load() != 2 {
+		t.Fatalf("Studio startup did not recover after the blank first response: loaded=%v, requests=%d", loaded, requests.Load())
 	}
 }

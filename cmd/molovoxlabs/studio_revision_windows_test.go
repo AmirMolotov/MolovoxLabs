@@ -10,6 +10,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -120,6 +121,45 @@ func TestTwoGlobalShortcutsToggleSameFilterAndPersist(t *testing.T) {
 		t.Fatal("Shortcut failed to update live native DSP")
 	}
 }
+func TestInstrumentInputKeepsAssignedShortcutsActive(t *testing.T) {
+	store := &appStore{root: t.TempDir()}
+	p := Preferences{GlobalKeys: true, Options: AudioOptions{Volume: 1, BoardVolume: 1, Filters: []MicFilter{{
+		ID: "gain", Kind: "gain", Enabled: true,
+		Hotkeys: []KeyBinding{{Key: 0x86, Modifiers: 3, Label: "Ctrl+Alt+F23"}},
+		MIDIs:   []MIDIBinding{{Kind: "note", Channel: 1, Number: 60}},
+	}}}}
+	if err := store.SavePreferences(p); err != nil {
+		t.Fatal(err)
+	}
+	engine := &nativeEngine{}
+	service := newTriggerService(store, engine)
+	defer service.Close()
+	changes := make(chan bool, 2)
+	service.FilterChanged = func(p Preferences) { changes <- p.Options.Filters[0].Enabled }
+	if err := service.Configure(p); err != nil {
+		t.Fatal(err)
+	}
+	engine.instruments.setInput(true, true)
+	assertToggle := func(shortcut string, want bool) {
+		t.Helper()
+		select {
+		case enabled := <-changes:
+			if enabled != want {
+				t.Fatalf("%s left the filter enabled=%t, want %t", shortcut, enabled, want)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("%s was suppressed in Instruments", shortcut)
+		}
+	}
+	postThread.Call(uintptr(service.keys.thread), 0x0312, 1, 0) // WM_HOTKEY
+	assertToggle("keyboard shortcut", false)
+	syscall.SyscallN(service.midi.callback, 0, 0x3c3, 0, 0x90|60<<8|100<<16, 0) // MIM_DATA
+	assertToggle("MIDI shortcut", true)
+	if got := engine.instruments.midiNotes[60].Load(); got != 100 {
+		t.Fatalf("instrument MIDI velocity = %d, want 100", got)
+	}
+}
+
 func TestIndividualGroupAndGlobalFilterActions(t *testing.T) {
 	p := Preferences{Options: AudioOptions{Filters: []MicFilter{{ID: "a", Kind: "gain", Enabled: true}, {ID: "b", Kind: "gain", Enabled: true}, {ID: "c", Kind: "gain", Enabled: true}}}, FilterGroups: []FilterGroup{{ID: "ab", FilterIDs: []string{"a", "b"}}}}
 	if err := toggleFilterState(&p, "@filter:a"); err != nil {

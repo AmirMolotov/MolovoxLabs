@@ -1,7 +1,8 @@
 'use strict';
 const instrumentKeys=['KeyA','KeyW','KeyS','KeyE','KeyD','KeyF','KeyT','KeyG','KeyY','KeyH','KeyU','KeyJ','KeyK','KeyO','KeyL','KeyP','Semicolon'];
 const instrumentNoteNames=['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
-const instrumentHeld=new Set();
+const instrumentHeld=new Set(),instrumentPianoHeld=new Map();
+let instrumentOctave=4;
 let instrumentCatalog=[],activeInstruments=[],instrumentBusy=false,instrumentBridge=Promise.resolve();
 function instrumentStatus(text){$('instrumentStatus').textContent=text;}
 function instrumentID(plugin){return plugin.Path+'|'+plugin.ClassID;}
@@ -48,43 +49,123 @@ async function refreshInstrumentMIDI(){
 }
 function openInstruments(){if(!vstCatalogLoading)vstCatalogLoading=initVST();refreshInstrumentMIDI();}
 function queueInstrumentInput(action){instrumentBridge=instrumentBridge.then(action).catch(error=>instrumentStatus(errorText(error)));return instrumentBridge;}
-function releaseInstrumentKeys(){
- for(const index of instrumentHeld)$('instrumentPiano').children[index].classList.remove('played');
- instrumentHeld.clear();
+function instrumentPressed(index){
+ return instrumentHeld.has(index)||[...instrumentPianoHeld.values()].includes(index);
+}
+function syncInstrumentKey(index,wasPressed){
+ const pressed=instrumentPressed(index);
+ if(pressed===wasPressed)return;
+ const classes=$('instrumentPiano').children[index].classList;
+ if(pressed)classes.add('played');else classes.remove('played');
+ const pitch=12*(instrumentOctave+1)+index;
+ queueInstrumentInput(()=>nativeInstrumentNote(pitch,pressed?100:0));
+}
+function holdPianoKey(index,source){
+ if(instrumentPianoHeld.has(source))return;
+ const wasPressed=instrumentPressed(index);
+ instrumentPianoHeld.set(source,index);
+ syncInstrumentKey(index,wasPressed);
+}
+function releasePianoKey(source){
+ const index=instrumentPianoHeld.get(source);
+ if(index===undefined)return;
+ instrumentPianoHeld.delete(source);
+ syncInstrumentKey(index,true);
 }
 function updateInstrumentInput(focused=document.hasFocus()){
- const midi=currentTab==='instruments',keyboard=midi&&$('instrumentKeyboard').checked&&focused;
- if(!keyboard)releaseInstrumentKeys();
- queueInstrumentInput(()=>nativeInstrumentInput(keyboard,midi));
+ const midi=currentTab==='instruments',piano=midi&&focused;
+ if(!piano){
+  for(const key of $('instrumentPiano').children)key.classList.remove('played');
+  instrumentHeld.clear();
+  instrumentPianoHeld.clear();
+ }else if(!$('instrumentKeyboard').checked){
+  for(const index of instrumentHeld){
+   instrumentHeld.delete(index);
+   syncInstrumentKey(index,true);
+  }
+ }
+ queueInstrumentInput(()=>nativeInstrumentInput(piano,midi));
+}
+function changeInstrumentOctave(delta){
+ const next=Math.max(-1,Math.min(8,instrumentOctave+delta));
+ if(next===instrumentOctave)return;
+ const released=new Set([...instrumentHeld,...instrumentPianoHeld.values()]);
+ instrumentHeld.clear();instrumentPianoHeld.clear();
+ for(const index of released)syncInstrumentKey(index,true);
+ instrumentOctave=next;
+ $('instrumentOctave').textContent='Octave '+next;
+ [...$('instrumentPiano').children].forEach((key,index)=>{
+  const pitch=instrumentNoteNames[index%12]+(next+Math.floor(index/12));
+  key.firstElementChild.textContent=pitch;
+  key.setAttribute('aria-label','Play '+pitch);
+ });
 }
 function instrumentKey(event){
  const index=instrumentKeys.indexOf(event.code);
- if(event.type==='keyup'&&instrumentHeld.delete(index)){
-  $('instrumentPiano').children[index].classList.remove('played');
-  queueInstrumentInput(()=>nativeInstrumentNote(60+index,0));
- }
- if(currentTab!=='instruments'||!$('instrumentKeyboard').checked||event.key==='Alt'||document.querySelector('dialog[open]'))return;
- const target=event.target,editing=target?.isContentEditable||target?.closest?.('input:not([type="checkbox"]),textarea,select,[contenteditable="true"]');
- if(event.type==='keydown'&&event.key==='Escape'){
-  event.preventDefault();event.stopImmediatePropagation();$('instrumentKeyboard').checked=false;updateInstrumentInput();return;
- }
- if(event.key==='Tab'||(target?.closest?.('[role="tab"]')&&event.key.startsWith('Arrow')))return;
- if(event.type==='keydown'&&index>=0&&!editing&&!event.ctrlKey&&!event.metaKey&&!event.altKey){
-  if(!event.repeat&&!instrumentHeld.has(index)){
-   instrumentHeld.add(index);$('instrumentPiano').children[index].classList.add('played');
-   queueInstrumentInput(()=>nativeInstrumentNote(60+index,100));
+ if(event.type==='keyup'&&instrumentHeld.delete(index))syncInstrumentKey(index,true);
+ if(event.type!=='keydown'||currentTab!=='instruments'||document.querySelector('dialog[open]'))return;
+ if(!event.isComposing&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!event.shiftKey&&(event.code==='KeyZ'||event.code==='KeyX')){
+  const target=event.target;
+  if(!target?.isContentEditable&&!target?.closest?.('input,textarea,select,[contenteditable="true"]')){
+   event.preventDefault();
+   if(!event.repeat)changeInstrumentOctave(event.code==='KeyZ'?-1:1);
   }
+  return;
  }
- event.stopImmediatePropagation();
- if(!editing&&(index>=0||!target?.closest?.('button,input,label,summary')))event.preventDefault();
+ if(!$('instrumentKeyboard').checked)return;
+ if(event.key==='Escape'){
+  $('instrumentKeyboard').checked=false;updateInstrumentInput();return;
+ }
+ if(index<0||event.repeat||instrumentHeld.has(index)||event.ctrlKey||event.metaKey||event.altKey)return;
+ const target=event.target;
+ if(target?.isContentEditable||target?.closest?.('input:not([type="checkbox"]),textarea,select,[contenteditable="true"]'))return;
+ const wasPressed=instrumentPressed(index);
+ instrumentHeld.add(index);
+ syncInstrumentKey(index,wasPressed);
 }
 let instrumentWhiteKeys=0;
 instrumentKeys.forEach((code,index)=>{
- const note=instrumentNoteNames[index%12],key=document.createElement('span'),black=note.endsWith('♯');
+ const note=instrumentNoteNames[index%12],key=document.createElement('button'),black=note.endsWith('♯');
+ const pitch=note+(4+Math.floor(index/12)),focusKey='key:'+index;
+ key.type='button';
  key.className='instrument-key'+(black?' black':'');
  if(black)key.style.left=instrumentWhiteKeys*10+'%';else instrumentWhiteKeys++;
- key.setAttribute('aria-hidden','true');key.append(note+(4+Math.floor(index/12)));
- const label=document.createElement('kbd');label.textContent=code==='Semicolon'?';':code.slice(-1);key.append(label);$('instrumentPiano').append(key);
+ const noteLabel=document.createElement('span');noteLabel.textContent=pitch;
+ key.setAttribute('aria-label','Play '+pitch);key.append(noteLabel);
+ const label=document.createElement('kbd');label.textContent=code==='Semicolon'?';':code.slice(-1);label.setAttribute('aria-hidden','true');key.append(label);
+ key.onpointerdown=e=>{
+  if(e.button!==0)return;
+  key.setPointerCapture(e.pointerId);
+  holdPianoKey(index,e.pointerId);
+ };
+ key.onpointermove=e=>{
+  if(!key.hasPointerCapture(e.pointerId))return;
+  const hovered=document.elementFromPoint(e.clientX,e.clientY)?.closest('.instrument-key');
+  const keys=$('instrumentPiano').children;
+  const next=Array.prototype.indexOf.call(keys,hovered);
+  if(next===instrumentPianoHeld.get(e.pointerId))return;
+  releasePianoKey(e.pointerId);
+  if(next>=0)holdPianoKey(next,e.pointerId);
+ };
+ key.onpointerup=key.onpointercancel=key.onlostpointercapture=e=>releasePianoKey(e.pointerId);
+ key.onkeydown=e=>{
+  if(e.key!==' '&&e.key!=='Enter')return;
+  e.preventDefault();
+  holdPianoKey(index,focusKey);
+ };
+ key.onkeyup=e=>{
+  if(e.key!==' '&&e.key!=='Enter')return;
+  e.preventDefault();
+  releasePianoKey(focusKey);
+ };
+ key.onblur=()=>releasePianoKey(focusKey);
+ key.onclick=e=>{
+  if(e.detail!==0)return;
+  const source=Symbol();
+  holdPianoKey(index,source);
+  setTimeout(()=>releasePianoKey(source),150);
+ };
+ $('instrumentPiano').append(key);
 });
 $('instrumentKeyboard').onchange=()=>updateInstrumentInput();
 $('instrumentPlugin').onchange=()=>{const select=$('instrumentPlugin'),plugin=instrumentCatalog.find(item=>instrumentID(item)===select.value);if(plugin)setInstrumentRack([...activeInstruments,plugin]);};

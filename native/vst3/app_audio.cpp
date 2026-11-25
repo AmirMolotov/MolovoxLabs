@@ -1,9 +1,11 @@
+#define NOMINMAX
 #include <windows.h>
 #include <mmdeviceapi.h>
 #include <tlhelp32.h>
 #include <map>
 #include <audioclient.h>
 #include <audiopolicy.h>
+#include <endpointvolume.h>
 #include <propidl.h>
 #include <wrl.h>
 #include <vector>
@@ -36,47 +38,121 @@ struct AppCapture {
  HANDLE event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
  ~AppCapture(){if(client) client->Stop();if(event) CloseHandle(event);}
 };
-extern "C" __declspec(dllexport) HRESULT ql_app_list(AppAudioInfo* entries, UINT capacity, UINT* count) {
- if(!entries || !count || capacity>256) return E_INVALIDARG;
- *count=0;
+template<class Visit>
+static HRESULT visitAudioSessions(Visit visit, bool activeOnly=true) {
  HRESULT apartment=CoInitializeEx(nullptr,COINIT_MULTITHREADED);
  if(FAILED(apartment) && apartment!=RPC_E_CHANGED_MODE) return apartment;
  HRESULT result=[&]()->HRESULT {
   ComPtr<IMMDeviceEnumerator> enumerator; HRESULT hr=CoCreateInstance(__uuidof(MMDeviceEnumerator),nullptr,CLSCTX_ALL,IID_PPV_ARGS(&enumerator));if(FAILED(hr))return hr;
   ComPtr<IMMDeviceCollection> devices;hr=enumerator->EnumAudioEndpoints(eRender,DEVICE_STATE_ACTIVE,&devices);if(FAILED(hr))return hr;
-  UINT deviceCount=0;devices->GetCount(&deviceCount);std::set<DWORD> seen;
-  std::map<DWORD,DWORD> parents;HANDLE snapshot=CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS,0);
-  if(snapshot!=INVALID_HANDLE_VALUE){PROCESSENTRY32W process={};process.dwSize=sizeof(process);if(Process32FirstW(snapshot,&process)){do{parents[process.th32ProcessID]=process.th32ParentProcessID;}while(Process32NextW(snapshot,&process));}CloseHandle(snapshot);}
+  UINT deviceCount=0;hr=devices->GetCount(&deviceCount);if(FAILED(hr))return hr;
   for(UINT d=0;d<deviceCount;d++){
    ComPtr<IMMDevice> device;if(FAILED(devices->Item(d,&device)))continue;
    ComPtr<IAudioSessionManager2> manager;if(FAILED(device->Activate(__uuidof(IAudioSessionManager2),CLSCTX_ALL,nullptr,&manager)))continue;
    ComPtr<IAudioSessionEnumerator> sessions;if(FAILED(manager->GetSessionEnumerator(&sessions)))continue;
    int n=0;sessions->GetCount(&n);
-   for(int i=0;i<n && *count<capacity;i++){
+   for(int i=0;i<n;i++){
     ComPtr<IAudioSessionControl> session;if(FAILED(sessions->GetSession(i,&session)))continue;
-    AudioSessionState state;if(FAILED(session->GetState(&state)) || state!=AudioSessionStateActive)continue;
+    AudioSessionState state;if(FAILED(session->GetState(&state)) || (activeOnly && state!=AudioSessionStateActive) || state==AudioSessionStateExpired)continue;
     ComPtr<IAudioSessionControl2> info;if(FAILED(session.As(&info)))continue;
-    DWORD pid=0;if(FAILED(info->GetProcessId(&pid)) || !pid || pid==GetCurrentProcessId() || !seen.insert(pid).second)continue;
-    HANDLE process=OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,FALSE,pid);if(!process)continue;
-    AppAudioInfo entry={};entry.pid=pid;DWORD size=1024;
-    BOOL ok=QueryFullProcessImageNameW(process,0,entry.path,&size);CloseHandle(process);
-    if(ok && size<1024){
-     // Capture one process tree per app so browser child sessions are not mixed twice.
-     DWORD root=pid;
-     for(int depth=0;depth<32;depth++){
-      auto parent=parents.find(root);if(parent==parents.end() || !parent->second || parent->second==root || parent->second==GetCurrentProcessId())break;
-      HANDLE process=OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,FALSE,parent->second);if(!process)break;
-      wchar_t parentPath[1024]={};DWORD length=1024;BOOL found=QueryFullProcessImageNameW(process,0,parentPath,&length);CloseHandle(process);
-      if(!found || _wcsicmp(parentPath,entry.path)!=0)break;root=parent->second;
-     }
-     entry.pid=root;bool duplicate=false;for(UINT k=0;k<*count;k++)if(entries[k].pid==root)duplicate=true;
-     if(!duplicate && root!=GetCurrentProcessId())entries[(*count)++]=entry;
-    }
+    DWORD pid=0;if(FAILED(info->GetProcessId(&pid)) || !pid)continue;
+    visit(session,pid);
    }
   }
   return S_OK;
  }();
  if(SUCCEEDED(apartment))CoUninitialize();return result;
+}
+
+static bool appProcessPath(DWORD pid, wchar_t (&path)[1024]) {
+ HANDLE process=OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,FALSE,pid);
+ if(!process)return false;
+ DWORD length=ARRAYSIZE(path);
+ BOOL found=QueryFullProcessImageNameW(process,0,path,&length);
+ CloseHandle(process);
+ return found && length<ARRAYSIZE(path);
+}
+
+extern "C" __declspec(dllexport) HRESULT ql_app_list(AppAudioInfo* entries, UINT capacity, UINT* count) {
+ if(!entries || !count || capacity>256) return E_INVALIDARG;
+ *count=0;
+ std::set<DWORD> seen;
+ std::map<DWORD,DWORD> parents;HANDLE snapshot=CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS,0);
+ if(snapshot!=INVALID_HANDLE_VALUE){PROCESSENTRY32W process={};process.dwSize=sizeof(process);if(Process32FirstW(snapshot,&process)){do{parents[process.th32ProcessID]=process.th32ParentProcessID;}while(Process32NextW(snapshot,&process));}CloseHandle(snapshot);}
+ return visitAudioSessions([&](const ComPtr<IAudioSessionControl>&,DWORD pid){
+    if(*count==capacity || pid==GetCurrentProcessId() || !seen.insert(pid).second)return;
+    AppAudioInfo entry={};
+    if(appProcessPath(pid,entry.path)){
+     // Capture one process tree per app so browser child sessions are not mixed twice.
+     DWORD root=pid;
+     for(int depth=0;depth<32;depth++){
+      auto parent=parents.find(root);if(parent==parents.end() || !parent->second || parent->second==root || parent->second==GetCurrentProcessId())break;
+      wchar_t parentPath[1024]={};
+      if(!appProcessPath(parent->second,parentPath) || _wcsicmp(parentPath,entry.path)!=0)break;root=parent->second;
+     }
+     entry.pid=root;bool duplicate=false;for(UINT k=0;k<*count;k++)if(entries[k].pid==root)duplicate=true;
+     if(!duplicate && root!=GetCurrentProcessId())entries[(*count)++]=entry;
+    }
+ });
+}
+
+struct AppMixerEntry { wchar_t path[1024]; float volume; float peak; };
+
+extern "C" __declspec(dllexport) HRESULT ql_mixer_list(AppMixerEntry* entries, UINT capacity, UINT* count) {
+ if(!entries || !count || capacity>256)return E_INVALIDARG;
+ *count=0;
+ return visitAudioSessions([&](const ComPtr<IAudioSessionControl>& session,DWORD pid){
+  AppMixerEntry entry={};
+  ComPtr<IAudioMeterInformation> meter;
+  ComPtr<ISimpleAudioVolume> volume;
+  if(FAILED(session.As(&meter)) || FAILED(meter->GetPeakValue(&entry.peak)) ||
+     FAILED(session.As(&volume)) || FAILED(volume->GetMasterVolume(&entry.volume)) ||
+     !appProcessPath(pid,entry.path))return;
+  for(UINT i=0;i<*count;i++){
+   if(_wcsicmp(entries[i].path,entry.path)!=0)continue;
+   if(entry.peak>entries[i].peak || (entry.peak==entries[i].peak && entry.volume>entries[i].volume))entries[i]=entry;
+   return;
+  }
+  if(*count<capacity)entries[(*count)++]=entry;
+ },false);
+}
+
+extern "C" __declspec(dllexport) HRESULT ql_mixer_set(const wchar_t* path, UINT percent) {
+ if(!path || !*path || percent>100)return E_INVALIDARG;
+ HRESULT result=HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+ HRESULT failure=S_OK;
+ HRESULT scan=visitAudioSessions([&](const ComPtr<IAudioSessionControl>& session,DWORD pid){
+  wchar_t current[1024]={};
+  if(!appProcessPath(pid,current) || _wcsicmp(path,current)!=0)return;
+  ComPtr<ISimpleAudioVolume> volume;
+  result=session.As(&volume);
+  if(SUCCEEDED(result))result=volume->SetMasterVolume(percent/100.f,nullptr);
+  if(FAILED(result))failure=result;
+ },false);
+ if(FAILED(scan))return scan;
+ return FAILED(failure)?failure:result;
+}
+extern "C" __declspec(dllexport) HRESULT ql_mixer_adjust(const wchar_t* paths, UINT count, INT delta) {
+ if(!paths || !count || count>256 || delta<-100 || delta>100)return E_INVALIDARG;
+ bool matched=false;
+ HRESULT failure=S_OK;
+ HRESULT scan=visitAudioSessions([&](const ComPtr<IAudioSessionControl>& session,DWORD pid){
+  wchar_t current[1024]={};
+  if(!appProcessPath(pid,current))return;
+  UINT i=0;
+  for(;i<count;i++)if(_wcsicmp(paths+i*1024,current)==0)break;
+  if(i==count)return;
+  matched=true;
+  ComPtr<ISimpleAudioVolume> volume;
+  float level=0;
+  HRESULT result=session.As(&volume);
+  if(SUCCEEDED(result))result=volume->GetMasterVolume(&level);
+  if(SUCCEEDED(result))result=volume->SetMasterVolume(std::max(0.f,std::min(1.f,level+delta/100.f)),nullptr);
+  if(FAILED(result))failure=result;
+ },false);
+ if(FAILED(scan))return scan;
+ if(!matched)return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+ return failure;
 }
 extern "C" __declspec(dllexport) HRESULT ql_app_open(DWORD pid, AppCapture** output) {
  if(!pid || pid==GetCurrentProcessId() || !output)return E_INVALIDARG;

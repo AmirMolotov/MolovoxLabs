@@ -69,3 +69,42 @@ func TestRemoveLastBoardCreatesFreshEmptyBoardAndReportsCleanupFailure(t *testin
 		t.Fatal("Cleanup failure not reported", result.Warnings)
 	}
 }
+
+func TestRemovalHistoryRestoresPadsAndBoardsAfterRestart(t *testing.T) {
+	root := t.TempDir()
+	s := &appStore{root: root}
+	dir := filepath.Join(root, "sounds")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(dir, "clip.wav")
+	if err := os.WriteFile(file, []byte("copied audio"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	board := SoundBoard{ID: "board", Name: "Original", Sounds: []SoundEntry{{ID: "pad", File: "clip.wav", Hotkeys: []KeyBinding{{Key: 80, Modifiers: 2}}}}}
+	if err := s.write("soundboards.json", libraryState{Boards: []SoundBoard{board}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.removeLibraryItem("", "pad", true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.removeLibraryItem("board", "", true); err != nil {
+		t.Fatal(err)
+	}
+	s = &appStore{root: root}
+	restored, err := s.changeRemovalHistory(false)
+	if err != nil || len(restored.Library.Boards) != 1 || restored.Library.Boards[0].ID != board.ID {
+		t.Fatalf("undo board: %+v, %v", restored, err)
+	}
+	restored, err = s.changeRemovalHistory(false)
+	if err != nil || len(restored.Library.Boards[0].Sounds) != 1 || restored.Library.Boards[0].Sounds[0].Hotkeys[0].Key != 80 {
+		t.Fatalf("undo pad: %+v, %v", restored, err)
+	}
+	redone, err := s.changeRemovalHistory(true)
+	if err != nil || len(redone.Library.Boards[0].Sounds) != 0 {
+		t.Fatalf("redo pad: %+v, %v", redone, err)
+	}
+	if _, err := os.Stat(file); err != nil {
+		t.Fatal("undo must retain copied audio:", err)
+	}
+}
