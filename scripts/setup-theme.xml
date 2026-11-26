@@ -12,7 +12,7 @@
     <Text X="18" Y="324" Width="-18" Height="19" FontId="0">Installation folder</Text>
     <Editbox Name="InstallFolder" X="18" Y="347" Width="-117" Height="24" FontId="0" TabStop="yes" FileSystemAutoComplete="yes">[InstallFolder]</Editbox>
     <Button Name="OptionsButton" X="-18" Y="346" Width="88" Height="26" FontId="0" TabStop="yes">Change…</Button>
-    <Checkbox Name="DesktopShortcut" X="18" Y="382" Width="-18" Height="22" FontId="0" TabStop="yes">Create a desktop shortcut</Checkbox>
+    <Checkbox Name="DesktopShortcut" X="18" Y="382" Width="260" Height="22" FontId="0" TabStop="yes">Create a desktop shortcut</Checkbox>
     <Button Name="InstallButton" X="-116" Y="-16" Width="88" Height="27" FontId="0" TabStop="yes">Install</Button>
     <Button Name="WelcomeCancelButton" X="-18" Y="-16" Width="88" Height="27" FontId="0" TabStop="yes">Cancel</Button>
   </Page>
