@@ -52,7 +52,10 @@ test('keyboard mode sends notes without intercepting shortcuts and releases held
  await vm.runInContext('instrumentBridge',h);
  assert.deepEqual(calls.at(-1),[62,0]);
  key.onpointerdown(pointer);
- const down=event('keydown','z','KeyZ');
+ const down={...event('keydown','z','KeyZ'),target:{closest:selector=>selector.startsWith('input,')}};
+ listeners.keydown(down);
+ assert.equal(down.prevented,undefined);
+ h.$('instrumentKeyboard').checked=true;
  listeners.keydown(down);
  assert.equal(down.prevented,true);
  listeners.keydown(event('keydown','z','KeyZ',true));
@@ -63,6 +66,8 @@ test('keyboard mode sends notes without intercepting shortcuts and releases held
  key.onpointerup(pointer);
  listeners.keydown({...event('keydown','x','KeyX'),target:{closest:()=>true}});
  assert.equal(h.$('instrumentOctave').textContent,'Octave 3');
+ listeners.keydown({...down,key:'x',code:'KeyX'});
+ assert.equal(h.$('instrumentOctave').textContent,'Octave 4');
  for(let i=0;i<7;i++)listeners.keydown(event('keydown','x','KeyX'));
  assert.equal(h.$('instrumentOctave').textContent,'Octave 8');
  h.$('instrumentPiano').children.at(-1).onpointerdown(pointer);

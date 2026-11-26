@@ -103,22 +103,18 @@ function changeInstrumentOctave(delta){
 function instrumentKey(event){
  const index=instrumentKeys.indexOf(event.code);
  if(event.type==='keyup'&&instrumentHeld.delete(index))syncInstrumentKey(index,true);
- if(event.type!=='keydown'||currentTab!=='instruments'||document.querySelector('dialog[open]'))return;
- if(!event.isComposing&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!event.shiftKey&&(event.code==='KeyZ'||event.code==='KeyX')){
-  const target=event.target;
-  if(!target?.isContentEditable&&!target?.closest?.('input,textarea,select,[contenteditable="true"]')){
-   event.preventDefault();
-   if(!event.repeat)changeInstrumentOctave(event.code==='KeyZ'?-1:1);
-  }
-  return;
- }
- if(!$('instrumentKeyboard').checked)return;
+ if(event.type!=='keydown'||currentTab!=='instruments'||!$('instrumentKeyboard').checked||document.querySelector('dialog[open]'))return;
  if(event.key==='Escape'){
   $('instrumentKeyboard').checked=false;updateInstrumentInput();return;
  }
- if(index<0||event.repeat||instrumentHeld.has(index)||event.ctrlKey||event.metaKey||event.altKey)return;
  const target=event.target;
  if(target?.isContentEditable||target?.closest?.('input:not([type="checkbox"]),textarea,select,[contenteditable="true"]'))return;
+ if(!event.isComposing&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!event.shiftKey&&(event.code==='KeyZ'||event.code==='KeyX')){
+  event.preventDefault();
+  if(!event.repeat)changeInstrumentOctave(event.code==='KeyZ'?-1:1);
+  return;
+ }
+ if(index<0||event.repeat||instrumentHeld.has(index)||event.ctrlKey||event.metaKey||event.altKey)return;
  const wasPressed=instrumentPressed(index);
  instrumentHeld.add(index);
  syncInstrumentKey(index,wasPressed);

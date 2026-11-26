@@ -17,7 +17,7 @@ VB-CABLE is supplied by [VB-Audio](https://vb-audio.com/Cable/). It is donationw
 Uninstalling Molovox leaves the prerequisites and your library in place. If setup fails, run it again with logging from an elevated PowerShell window. The most recent prerequisite error is also recorded under the `SetupError` value in `HKLM\SOFTWARE\MolovoxLabs`.
 
 ```powershell
-.\MolovoxLabs-0.4.8-x64-Setup.exe /log "molovox-install.log"
+.\MolovoxLabs-0.4.9-x64-Setup.exe /log "molovox-install.log"
 ```
 
 For unattended setup, review the terms first and pass `/quiet /norestart AcceptTerms=1` from an elevated terminal. Exit code `3010` indicates a successful installation that needs a restart.
@@ -53,10 +53,10 @@ Set `VCVARS64` to your Visual Studio `vcvars64.bat` path if the script can't fin
 For distribution, build Windows Setup. The script runs the same application checks and writes a single setup executable to the ignored `release/` directory.
 
 ```powershell
-.\scripts\build-setup.ps1 -Version 0.4.8
+.\scripts\build-setup.ps1 -Version 0.4.9
 ```
 
-Push a version tag such as `v0.4.8` to trigger the GitHub release workflow. It verifies the consent requirement and dependency installation order before publishing the setup executable as the release asset.
+Push a version tag such as `v0.4.9` to trigger the GitHub release workflow. It verifies the consent requirement and dependency installation order before publishing the setup executable as the release asset.
 
 Source layout and development rules are in [AGENTS.md](AGENTS.md). The Windows application lives in `cmd/molovoxlabs/`; hand-written interface assets live in `web/` and are embedded at build time. Run Go commands from the repository root with `./...` for checks or `./cmd/molovoxlabs` for the application.
 
