@@ -12,5 +12,5 @@ test('startup renders the saved soundboard without waiting for other tabs',async
   nativeStudioReady:async()=>events.push('WebView ready'),nativeConfigure:async()=>{},options:()=>({}),start:async()=>events.push('audio'),idle(){},setLive(){},message:text=>assert.fail(text),errorText:String};
  vm.createContext(h);vm.runInContext(source.slice(source.indexOf('async function init()')),h);
  await h.init();
- assert.deepEqual(events,['render saved','board ready','WebView ready','audio']);
+ assert.deepEqual(events,['WebView ready','render saved','board ready','audio']);
 });

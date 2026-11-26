@@ -231,6 +231,8 @@ type desktopTray struct {
 	data           trayIconData
 	taskbarCreated uint32
 	added, exiting bool
+	startupPending bool
+	startupOpen    func()
 	open           func()
 	openInstrument func()
 	keys           *altTapListener
@@ -265,10 +267,7 @@ func installDesktopTray(hwnd uintptr, open func()) (*desktopTray, error) {
 			t.show()
 			return 0
 		case trayInstrumentMessage:
-			t.restore()
-			if t.openInstrument != nil {
-				t.openInstrument()
-			}
+			t.showTab(t.openInstrument)
 			return 0
 		case trayNotifyMessage:
 			switch uint32(lp) & 0xffff {
@@ -319,12 +318,25 @@ func (t *desktopTray) remove() {
 	}
 }
 func (t *desktopTray) show() {
-	t.restore()
-	if t.open != nil {
-		t.open()
-	}
+	t.showTab(t.open)
 }
 func (t *desktopTray) restore() {
+	t.showTab(nil)
+}
+func (t *desktopTray) finishStartup() {
+	t.startupPending = false
+	if open := t.startupOpen; open != nil {
+		t.startupOpen = nil
+		open()
+	}
+}
+func (t *desktopTray) showTab(open func()) {
+	if t.startupPending {
+		if t.startupOpen == nil || open != nil {
+			t.startupOpen = func() { t.showTab(open) }
+		}
+		return
+	}
 	minimized, _, _ := user32.NewProc("IsIconic").Call(t.hwnd)
 	if minimized != 0 {
 		user32.NewProc("ShowWindow").Call(t.hwnd, 9)
@@ -332,6 +344,9 @@ func (t *desktopTray) restore() {
 		user32.NewProc("ShowWindow").Call(t.hwnd, 5)
 	}
 	focusTrayWindow(t.hwnd)
+	if open != nil {
+		open()
+	}
 }
 func (t *desktopTray) menu() {
 	menu, _, _ := user32.NewProc("CreatePopupMenu").Call()

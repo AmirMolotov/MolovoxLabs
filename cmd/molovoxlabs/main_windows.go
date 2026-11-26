@@ -168,12 +168,9 @@ func main() {
 			log.Print("Could not update Windows startup: ", err)
 		}
 	}
-	finishHiddenStart := func() {}
-	if *startInTray {
-		finishHiddenStart, err = hideInitialDesktopWindow()
-		if err != nil {
-			log.Fatal(err)
-		}
+	finishHiddenStart, err := hideInitialDesktopWindow()
+	if err != nil {
+		log.Fatal(err)
 	}
 	if err := os.Setenv("WEBVIEW2_DEFAULT_BACKGROUND_COLOR", "FF101916"); err != nil {
 		log.Print("Could not set Studio startup color: ", err)
@@ -238,7 +235,8 @@ func main() {
 		return result, nil
 	}
 	studioURL := fmt.Sprintf("http://%s%s", listener.Addr(), prefix+"studio.html")
-	openStudio, studioReady, stopStudioStartup := watchStudioStartup(window, studioURL, 10*time.Second)
+	var tray *desktopTray
+	openStudio, studioReady, stopStudioStartup := watchStudioStartup(window, studioURL, 10*time.Second, func() { tray.finishStartup() })
 	defer stopStudioStartup()
 	bindings := map[string]interface{}{
 		"nativeStudioReady":     studioReady,
@@ -559,7 +557,7 @@ func main() {
 		}
 	}
 
-	tray, err := installDesktopTray(uintptr(window.Window()), func() {
+	tray, err = installDesktopTray(uintptr(window.Window()), func() {
 		window.Dispatch(func() {
 			window.Eval("window.MOLOVOX_OPEN_SOUNDBOARD=true;window.dispatchEvent(new Event('molovox-open-soundboard'));")
 		})
@@ -568,6 +566,10 @@ func main() {
 		log.Fatal(err)
 	}
 	defer tray.Close()
+	tray.startupPending = true
+	if !*startInTray {
+		tray.restore()
+	}
 	tray.openInstrument = func() {
 		window.Dispatch(func() {
 			window.Eval("window.MOLOVOX_OPEN_INSTRUMENTS=true;window.dispatchEvent(new Event('molovox-open-instruments'));")

@@ -302,6 +302,7 @@ function loadFilterModels(p,render=true){
 }
 async function init(){
  const finishLoading=beginLoading('Loading your soundboard…',true);
+ if(typeof nativeStudioReady==='function')nativeStudioReady().catch(console.error);
  let missing=false;
  try{
   await paintLoading();
@@ -317,7 +318,6 @@ async function init(){
  }catch(e){setLive(false);message('Could not open Studio: '+errorText(e));return;}
  finally{
   finishLoading();
-  if(typeof nativeStudioReady==='function')nativeStudioReady().catch(console.error);
  }
  idle();
  if(wantListening&&!missing){await start(false);if(!preferences.Saved)await save();}

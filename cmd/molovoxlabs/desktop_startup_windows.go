@@ -15,7 +15,7 @@ import (
 
 // Startup callbacks run on the WebView thread. Ignore a timeout that was
 // already dispatched when the page reported that it had loaded.
-func watchStudioStartup(window webview.WebView, url string, timeout time.Duration) (start, ready, stop func()) {
+func watchStudioStartup(window webview.WebView, url string, timeout time.Duration, showWhenReady func()) (start, ready, stop func()) {
 	var timer *time.Timer
 	stop = func() {
 		if timer != nil {
@@ -40,6 +40,7 @@ func watchStudioStartup(window webview.WebView, url string, timeout time.Duratio
 				stop()
 				log.Print("Studio did not report startup after retry")
 				window.SetHtml(studioStartupError)
+				showWhenReady()
 			})
 		})
 		timer = next
@@ -47,7 +48,8 @@ func watchStudioStartup(window webview.WebView, url string, timeout time.Duratio
 	start = func() { stop(); load(false) }
 	ready = func() {
 		stop()
-		log.Print("Studio startup completed")
+		log.Print("Studio page opened")
+		showWhenReady()
 	}
 	return start, ready, stop
 }
@@ -57,23 +59,30 @@ const studioStartupError = `<!doctype html><meta charset="utf-8"><title>Molovox 
 <h1>Studio didn't load</h1><p>Retry opening Studio.</p>
 <button onclick="nativeStudioRetry()">Retry</button></body>`
 
-type desktopWindowPosition struct {
-	window, after uintptr
-	x, y, cx, cy  int32
-	flags         uint32
-}
-
-// WebView2's window constructor always calls ShowWindow; intercept that first
-// show before it happens so sign-in never flashes or activates the window.
+// WebView2 needs a visible host while its controller is created. Cloak the
+// window so it can initialize without appearing on the desktop or taking focus.
 func hideInitialDesktopWindow() (func(), error) {
+	const dwmwaCloak = 13
+	setAttribute := windows.NewLazySystemDLL("dwmapi.dll").NewProc("DwmSetWindowAttribute")
+	setCloak := func(window uintptr, enabled int32) uintptr {
+		result, _, _ := setAttribute.Call(window, dwmwaCloak, uintptr(unsafe.Pointer(&enabled)), unsafe.Sizeof(enabled))
+		return result
+	}
 	var hwnd uintptr
-	subclass := windows.NewCallback(func(window, msg, wp uintptr, lp unsafe.Pointer, id, ref uintptr) uintptr {
-		if msg == 0x46 { // WM_WINDOWPOSCHANGING
-			position := (*desktopWindowPosition)(lp)
-			position.flags &^= 0x40 // SWP_SHOWWINDOW
-			position.flags |= 0x10  // SWP_NOACTIVATE
+	cloaked := false
+	subclass := windows.NewCallback(func(window, msg, wp, lp, id, ref uintptr) uintptr {
+		if msg == 0x01 { // WM_CREATE
+			// Consume the launcher's show state before WebView2 shows its host.
+			user32.NewProc("ShowWindow").Call(window, 0)
 		}
-		result, _, _ := trayComctl.NewProc("DefSubclassProc").Call(window, msg, wp, uintptr(lp))
+		if msg == 0x18 && wp != 0 && !cloaked { // WM_SHOWWINDOW
+			result := setCloak(window, 1)
+			cloaked = result == 0
+			if !cloaked {
+				log.Printf("Could not cloak Studio window: %#x", result)
+			}
+		}
+		result, _, _ := trayComctl.NewProc("DefSubclassProc").Call(window, msg, wp, lp)
 		return result
 	})
 	callback := windows.NewCallback(func(code, wp, lp uintptr) uintptr {
@@ -81,19 +90,21 @@ func hideInitialDesktopWindow() (func(), error) {
 			var class [64]uint16
 			user32.NewProc("GetClassNameW").Call(wp, uintptr(unsafe.Pointer(&class[0])), uintptr(len(class)))
 			if windows.UTF16ToString(class[:]) == "webview" {
-				ok, _, _ := trayComctl.NewProc("SetWindowSubclass").Call(wp, subclass, 716, 0)
-				if ok == 0 {
-					return 1 // Abort creation rather than show a startup window.
+				if ok, _, failure := trayComctl.NewProc("SetWindowSubclass").Call(wp, subclass, 716, 0); ok == 0 {
+					log.Printf("Could not prepare Studio window: %v", failure)
 				}
 				hwnd = wp
 			}
+		}
+		if code == 5 && wp == hwnd { // HCBT_ACTIVATE
+			return 1
 		}
 		result, _, _ := trayNextHook.Call(0, code, wp, lp)
 		return result
 	})
 	hook, _, err := user32.NewProc("SetWindowsHookExW").Call(5, callback, 0, uintptr(windows.GetCurrentThreadId()))
 	if hook == 0 {
-		return nil, fmt.Errorf("Could not prepare tray startup: %w", err)
+		return nil, fmt.Errorf("Could not prepare Studio window: %w", err)
 	}
 	return func() {
 		if hook == 0 {
@@ -102,7 +113,13 @@ func hideInitialDesktopWindow() (func(), error) {
 		user32.NewProc("UnhookWindowsHookEx").Call(hook)
 		hook = 0
 		if hwnd != 0 {
+			user32.NewProc("ShowWindow").Call(hwnd, 0)
 			trayComctl.NewProc("RemoveWindowSubclass").Call(hwnd, subclass, 716)
+			if cloaked {
+				if result := setCloak(hwnd, 0); result != 0 {
+					log.Printf("Could not uncloak Studio window: %#x", result)
+				}
+			}
 		}
 	}, nil
 }
