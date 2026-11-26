@@ -58,6 +58,13 @@ jobs:
             Get-Content $deniedLog -Tail 80
             throw 'Unattended setup did not require explicit terms acceptance.'
           }
+          # A driver install can register a pending bundle restart, which blocks uninstall on this runner.
+          $driverSetup = (Get-Item '.build/msi/InstallDependencies.exe').FullName
+          $driver = Start-Process $driverSetup -ArgumentList 'vbcable' -Wait -PassThru -WindowStyle Hidden
+          if ($driver.ExitCode -notin 0, 3010) {
+            Get-ItemProperty 'HKLM:\SOFTWARE\MolovoxLabs' -Name SetupError -ErrorAction SilentlyContinue
+            throw "VB-CABLE setup failed ($($driver.ExitCode))."
+          }
           $result = Start-Process $setup -ArgumentList "/quiet /norestart AcceptTerms=1 DesktopShortcut=1 InstallFolder=`"$app`" /log `"$log`"" -Wait -PassThru -WindowStyle Hidden
           if ($result.ExitCode -notin 0, 3010) {
             Get-Content $log -Tail 100

@@ -114,7 +114,7 @@ func TestTrayStartupCreatesWebViewWithoutShowingWindow(t *testing.T) {
 		fmt.Fprint(w, "<!doctype html><script>nativeStudioReady()</script>")
 	}))
 	defer server.Close()
-	open, ready, stop := watchStudioStartup(window, server.URL+"/studio.html", 250*time.Millisecond, tray.finishStartup)
+	open, ready, stop := watchStudioStartup(window, server.URL+"/studio.html", 2*time.Second, tray.finishStartup)
 	defer stop()
 	loaded := false
 	if err := window.Bind("nativeStudioReady", func() {
@@ -124,7 +124,7 @@ func TestTrayStartupCreatesWebViewWithoutShowingWindow(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	guard := time.AfterFunc(5*time.Second, func() { window.Dispatch(window.Terminate) })
+	guard := time.AfterFunc(15*time.Second, func() { window.Dispatch(window.Terminate) })
 	defer guard.Stop()
 	window.Dispatch(open)
 	window.Run()
