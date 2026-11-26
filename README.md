@@ -12,7 +12,7 @@ Closing or minimizing the window keeps it running in the tray. Tap Alt twice to 
 2. Review and accept the setup terms, choose the installation folder, and optionally check **Create a desktop shortcut**. Setup displays each prerequisite as it runs and installs the components it needs. Keep an internet connection available for missing prerequisites, approve the administrator prompt, and restart Windows if setup asks you to.
 3. Open **Molovox Labs** from the Start menu or desktop shortcut. Enable **Open on Windows startup** in Settings to start it in the tray when you sign in.
 
-VB-CABLE is supplied by [VB-Audio](https://vb-audio.com/Cable/). It is donationware and contributions are welcome. To send audio to Discord, select **CABLE Input** as an output in Molovox and **CABLE Output** as the microphone in Discord. Keep your physical microphone selected as the input in Molovox.
+VB-CABLE is supplied by [VB-Audio](https://vb-audio.com/Cable/). It is donationware and contributions are welcome.
 
 Uninstalling Molovox leaves the prerequisites and your library in place. If setup fails, run it again with logging from an elevated PowerShell window. The most recent prerequisite error is also recorded under the `SetupError` value in `HKLM\SOFTWARE\MolovoxLabs`.
 
@@ -23,6 +23,18 @@ Uninstalling Molovox leaves the prerequisites and your library in place. If setu
 For unattended setup, review the terms first and pass `/quiet /norestart AcceptTerms=1` from an elevated terminal. Exit code `3010` indicates a successful installation that needs a restart.
 
 Older releases ship as a standalone EXE. For those releases or the development EXE, install [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download) and put both [FFmpeg tools](https://www.gyan.dev/ffmpeg/builds/) on your PATH. Install VB-CABLE separately if you need the virtual microphone.
+
+## Send your mic and soundboard to another app
+
+![Animated walkthrough of VB-CABLE routing. Select your physical mic and CABLE Input in Molovox Labs, enable Microphone → outputs, then select CABLE Output as the microphone in the receiving app.](assets/guides/vb-cable-routing.gif)
+
+1. In **Molovox Labs → Settings → Microphones**, select the physical microphone you speak into.
+2. Under **Speakers & headphones**, select **CABLE Input (VB-Audio Virtual Cable)**. This is the playback device Molovox sends audio to.
+3. Enable **Microphone → outputs** in the top audio bar to add your voice to the soundboard mix. If listening is paused, click **Resume listening**. Leave **Patch bay** disabled for this automatic setup. Turn off **Microphone → outputs** to send clips only.
+4. In **Discord, OBS, or another app**, select **CABLE Output (VB-Audio Virtual Cable)** as the **microphone** or **audio input**. Keep the receiving app’s playback on your headphones or speakers.
+5. Speak into your mic, then play a soundboard clip. The receiving app’s microphone meter should respond to both.
+
+If the cable devices are missing, install [VB-CABLE](https://vb-audio.com/Cable/), restart Windows, then open Molovox Labs and click **Refresh devices** in Settings.
 
 ## A quick look
 
