@@ -26,13 +26,22 @@ Older releases ship as a standalone EXE. For those releases or the development E
 
 ## Send your mic and soundboard to another app
 
-![Animated walkthrough of VB-CABLE routing. Select your physical mic and CABLE Input in Molovox Labs, enable Microphone → outputs, then select CABLE Output as the microphone in the receiving app.](assets/guides/vb-cable-routing.gif)
+![Animated VB-CABLE walkthrough showing microphone setup, Patch bay connections to CABLE Input and optional headphones, and how to select CABLE Output as the microphone in another app.](assets/guides/vb-cable-routing.gif)
 
 1. In **Molovox Labs → Settings → Microphones**, select the physical microphone you speak into.
 2. Under **Speakers & headphones**, select **CABLE Input (VB-Audio Virtual Cable)**. This is the playback device Molovox sends audio to.
-3. Enable **Microphone → outputs** in the top audio bar to add your voice to the soundboard mix. If listening is paused, click **Resume listening**. Leave **Patch bay** disabled for this automatic setup. Turn off **Microphone → outputs** to send clips only.
+3. Enable **Microphone → outputs** in the top audio bar to add your voice to the soundboard mix. If listening is paused, click **Resume listening**. For automatic routing, keep **Use patch bay routing** off. If you use Patch bay, follow the wiring steps below. Turn off **Microphone → outputs** to send clips only.
 4. In **Discord, OBS, or another app**, select **CABLE Output (VB-Audio Virtual Cable)** as the **microphone** or **audio input**. Keep the receiving app’s playback on your headphones or speakers.
 5. Speak into your mic, then play a soundboard clip. The receiving app’s microphone meter should respond to both.
+
+### Wire the mix in Patch bay
+
+1. In **Settings → Speakers & headphones**, select **CABLE Input** and any headphones or speakers you want to monitor through.
+2. Open **Patch bay** and enable **Use patch bay routing**. Choose **CABLE Input** from **Add an output…**. Drag from the right-hand socket of **Microphone mix**, your soundboard, or the last effect on each path to the left-hand socket of **CABLE Input**. Keep **Microphone → outputs** on if you want your voice in the mix.
+3. To listen locally, add your headphones or speakers as another output and connect the sources you want to hear. For example, connect only the soundboard to your headphones if you prefer to hear clips without hearing your own mic.
+4. If a source already feeds **Selected outputs**, it already reaches every device checked in Settings. When switching that source to individual output connections, unplug its old cable into **Selected outputs** so it plays once on each device.
+
+In the receiving app, the microphone is still **CABLE Output (VB-Audio Virtual Cable)**.
 
 If the cable devices are missing, install [VB-CABLE](https://vb-audio.com/Cable/), restart Windows, then open Molovox Labs and click **Refresh devices** in Settings.
 
