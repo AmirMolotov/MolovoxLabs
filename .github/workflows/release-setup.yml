@@ -93,11 +93,18 @@ jobs:
           $device = Get-CimInstance -ClassName Win32_PnPEntity -Filter "PNPClass = 'MEDIA' AND Present = TRUE" |
             Where-Object { $_.HardwareID -contains 'VBAudioVACWDM' }
           if (!$device) { throw 'The VB-CABLE device is missing after setup.' }
-          $uninstall = Start-Process $setup -ArgumentList '/uninstall /quiet /norestart' -Wait -PassThru -WindowStyle Hidden
-          if ($uninstall.ExitCode -notin 0, 3010 -or (Test-Path -LiteralPath $shortcut)) { throw 'Uninstall did not remove the desktop shortcut.' }
+          $uninstallLog = Join-Path $env:RUNNER_TEMP 'molovox-setup-uninstall.log'
+          $uninstall = Start-Process $setup -ArgumentList "/uninstall /quiet /norestart /log `"$uninstallLog`"" -Wait -PassThru -WindowStyle Hidden
+          if ($uninstall.ExitCode -notin 0, 3010 -or (Test-Path -LiteralPath $shortcut)) {
+            Get-Content -LiteralPath $uninstallLog -Tail 65
+            throw "Uninstall exit code: $($uninstall.ExitCode). Desktop shortcut still present: $(Test-Path -LiteralPath $shortcut)."
+          }
           $repeatLog = Join-Path $env:RUNNER_TEMP 'molovox-setup-repeat.log'
           $repeat = Start-Process $setup -ArgumentList "/quiet /norestart AcceptTerms=1 DesktopShortcut=0 InstallFolder=`"$app`" /log `"$repeatLog`"" -Wait -PassThru -WindowStyle Hidden
-          if ($repeat.ExitCode -notin 0, 3010 -or (Test-Path -LiteralPath $shortcut)) { throw 'Setup did not honor desktop shortcut opt-out.' }
+          if ($repeat.ExitCode -notin 0, 3010 -or (Test-Path -LiteralPath $shortcut)) {
+            Get-Content -LiteralPath $repeatLog -Tail 65
+            throw "Repeat setup exit code: $($repeat.ExitCode). Desktop shortcut present: $(Test-Path -LiteralPath $shortcut)."
+          }
           if ((Test-Path -LiteralPath (Join-Path $tools 'ffmpeg.exe')) -and
               (Select-String -LiteralPath $repeatLog -SimpleMatch 'Applying execute package: FFmpeg,' -Quiet)) {
             throw 'Setup reran the FFmpeg installer even though both tools were already present.'
