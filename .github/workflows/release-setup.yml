@@ -44,7 +44,7 @@ jobs:
           if (!$vs) { throw 'Visual Studio C++ tools are missing.' }
           $env:VCVARS64 = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
           .\scripts\build-setup.ps1 -Version $env:RELEASE_TAG.Substring(1)
-      - name: Verify consent and prerequisite installation order
+      - name: Verify setup choices and prerequisite reuse
         shell: pwsh
         run: |
           $version = $env:RELEASE_TAG.Substring(1)
@@ -58,29 +58,50 @@ jobs:
             Get-Content $deniedLog -Tail 80
             throw 'Unattended setup did not require explicit terms acceptance.'
           }
-          $result = Start-Process $setup -ArgumentList "/quiet /norestart AcceptTerms=1 InstallFolder=`"$app`" /log `"$log`"" -Wait -PassThru -WindowStyle Hidden
+          $result = Start-Process $setup -ArgumentList "/quiet /norestart AcceptTerms=1 DesktopShortcut=1 InstallFolder=`"$app`" /log `"$log`"" -Wait -PassThru -WindowStyle Hidden
           if ($result.ExitCode -notin 0, 3010) {
             Get-Content $log -Tail 100
             Get-ItemProperty 'HKLM:\SOFTWARE\MolovoxLabs' -Name SetupError -ErrorAction SilentlyContinue
             throw "Setup failed ($($result.ExitCode))."
           }
-          $prerequisites = Select-String -LiteralPath $log -SimpleMatch 'Applied execute package: Prerequisites, result: 0x0' | Select-Object -First 1
+          $prerequisites = Select-String -LiteralPath $log -Pattern 'Applied execute package: (FFmpeg|WebView2|VBCable), result: 0x0'
           $application = Select-String -LiteralPath $log -SimpleMatch 'Applying execute package: Application,' | Select-Object -First 1
-          if (!$prerequisites -or !$application -or $prerequisites.LineNumber -ge $application.LineNumber) {
+          if (!$prerequisites -or !$application -or ($prerequisites | Where-Object LineNumber -ge $application.LineNumber)) {
             throw 'Dependencies did not finish before application installation.'
           }
           if (!(Test-Path (Join-Path $app 'MolovoxLabs.exe'))) { throw 'MSI did not honor the chosen install folder.' }
-          $tools = Join-Path ([Environment]::GetFolderPath('CommonProgramFiles')) 'Molovox Labs\Media'
+          $shortcut = Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'Molovox Labs.lnk'
+          if (!(Test-Path -LiteralPath $shortcut)) { throw 'MSI did not create the selected desktop shortcut.' }
+          $shell = New-Object -ComObject WScript.Shell
+          if ($shell.CreateShortcut($shortcut).TargetPath -ne (Join-Path $app 'MolovoxLabs.exe')) {
+            throw 'The desktop shortcut does not target the chosen install folder.'
+          }
+          $tools = Join-Path ([Environment]::GetFolderPath('CommonProgramFiles')) 'Molovox Labs\Tools'
+          $ffmpeg = Join-Path $tools 'ffmpeg.exe'
+          $ffprobe = Join-Path $tools 'ffprobe.exe'
+          if (!(Test-Path -LiteralPath $ffmpeg)) {
+            $ffmpeg = (Get-Command ffmpeg.exe -CommandType Application).Source
+            $ffprobe = (Get-Command ffprobe.exe -CommandType Application).Source
+          }
           $video = Join-Path $env:RUNNER_TEMP 'molovox-codecs.mp4'
-          & "$tools\ffmpeg.exe" -v error -f lavfi -i 'color=black:size=64x64' -f lavfi -i 'anullsrc' -t 1 -c:v libx264 -c:a aac $video
+          & $ffmpeg -v error -f lavfi -i 'color=black:size=64x64' -f lavfi -i 'anullsrc' -t 1 -c:v libx264 -c:a aac $video
           if ($LASTEXITCODE -ne 0) { throw 'Installed FFmpeg could not export H.264/AAC.' }
-          & "$tools\ffprobe.exe" -v error -show_entries stream=codec_name $video
+          & $ffprobe -v error -show_entries stream=codec_name $video
           if ($LASTEXITCODE -ne 0) { throw 'Installed ffprobe could not inspect the export.' }
           $runtime = Get-ItemPropertyValue 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' -Name pv
           if (!$runtime -or $runtime -eq '0.0.0.0') { throw 'The WebView2 runtime is missing after setup.' }
           $device = Get-CimInstance -ClassName Win32_PnPEntity -Filter "PNPClass = 'MEDIA' AND Present = TRUE" |
             Where-Object { $_.HardwareID -contains 'VBAudioVACWDM' }
           if (!$device) { throw 'The VB-CABLE device is missing after setup.' }
+          $uninstall = Start-Process $setup -ArgumentList '/uninstall /quiet /norestart' -Wait -PassThru -WindowStyle Hidden
+          if ($uninstall.ExitCode -notin 0, 3010 -or (Test-Path -LiteralPath $shortcut)) { throw 'Uninstall did not remove the desktop shortcut.' }
+          $repeatLog = Join-Path $env:RUNNER_TEMP 'molovox-setup-repeat.log'
+          $repeat = Start-Process $setup -ArgumentList "/quiet /norestart AcceptTerms=1 DesktopShortcut=0 InstallFolder=`"$app`" /log `"$repeatLog`"" -Wait -PassThru -WindowStyle Hidden
+          if ($repeat.ExitCode -notin 0, 3010 -or (Test-Path -LiteralPath $shortcut)) { throw 'Setup did not honor desktop shortcut opt-out.' }
+          if ((Test-Path -LiteralPath (Join-Path $tools 'ffmpeg.exe')) -and
+              (Select-String -LiteralPath $repeatLog -SimpleMatch 'Applying execute package: FFmpeg,' -Quiet)) {
+            throw 'Setup reran the FFmpeg installer even though both tools were already present.'
+          }
       - name: Publish Windows Setup
         shell: pwsh
         env:

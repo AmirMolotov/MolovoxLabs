@@ -5,7 +5,8 @@
   <Bundle Name="Molovox Labs" Version="$(var.Version)" Manufacturer="Molovox Labs"
           UpgradeCode="00846CD1-4666-431D-8A6E-C6F43177313C" IconSourceFile="$(var.Root)\assets\molovox-labs.ico">
     <BootstrapperApplicationRef Id="WixStandardBootstrapperApplication.RtfLargeLicense">
-      <bal:WixStandardBootstrapperApplication LicenseFile="$(var.Root)\scripts\installer-terms.rtf" />
+      <bal:WixStandardBootstrapperApplication LicenseFile="$(var.Root)\scripts\installer-terms.rtf"
+          ThemeFile="$(var.Root)\scripts\setup-theme.xml" />
     </BootstrapperApplicationRef>
     <bal:Condition Message="Molovox Labs requires x64 Windows 10 or later.">
       VersionNT64 &gt;= v10.0 AND NativeMachine = 34404
@@ -16,19 +17,38 @@
     <Variable Name="AcceptTerms" Type="numeric" Value="0" bal:Overridable="yes" />
     <Variable Name="DefaultInstallFolder" Type="string" Value="[ProgramFiles64Folder]Molovox Labs" />
     <Variable Name="InstallFolder" Type="string" Value="[DefaultInstallFolder]" bal:Overridable="yes" />
+    <Variable Name="DesktopShortcut" Type="numeric" Value="-1" bal:Overridable="yes" />
     <util:RegistrySearch Id="HasPreviousInstallFolder" Root="HKLM" Key="SOFTWARE\MolovoxLabs"
                          Value="InstallFolder" Variable="PreviousInstallFolderExists" Result="exists" Win64="yes" />
     <util:RegistrySearch Id="PreviousInstallFolder" Root="HKLM" Key="SOFTWARE\MolovoxLabs"
                          Value="InstallFolder" Variable="DefaultInstallFolder" Result="value" Win64="yes"
                          After="HasPreviousInstallFolder" Condition="PreviousInstallFolderExists" />
+    <util:RegistrySearch Id="PreviousDesktopShortcut" Root="HKCU" Key="SOFTWARE\MolovoxLabs"
+                         Value="DesktopShortcut" Variable="DesktopShortcut" Result="exists" Win64="yes"
+                         Condition="DesktopShortcut = -1" />
+    <util:FileSearch Id="HasFFmpeg" Path="[CommonFiles64Folder]Molovox Labs\Tools\ffmpeg.exe" Variable="HasFFmpeg" Result="exists" />
+    <util:FileSearch Id="HasFFprobe" Path="[CommonFiles64Folder]Molovox Labs\Tools\ffprobe.exe" Variable="HasFFprobe" Result="exists" />
+    <util:RegistrySearch Id="WebView2Version" Root="HKLM" Key="SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+                         Value="pv" Variable="WebView2Version" Result="value" />
     <Chain>
-      <ExePackage Id="Prerequisites" DisplayName="Molovox Labs prerequisites" SourceFile="$(var.Stage)\InstallDependencies.exe"
+      <ExePackage Id="FFmpeg" DisplayName="FFmpeg and ffprobe (may require a download)"
+                  Name="InstallFFmpeg.exe" SourceFile="$(var.Stage)\InstallDependencies.exe" InstallCommand="ffmpeg"
+                  DetectCondition="HasFFmpeg AND HasFFprobe" PerMachine="yes" Permanent="yes" Vital="yes" Compressed="yes" />
+      <ExePackage Id="WebView2" DisplayName="Microsoft Edge WebView2 Runtime"
+                  Name="InstallWebView2.exe" SourceFile="$(var.Stage)\InstallDependencies.exe" InstallCommand="webview2"
+                  DetectCondition='WebView2Version AND WebView2Version &lt;&gt; "0.0.0.0"'
+                  PerMachine="yes" Permanent="yes" Vital="yes" Compressed="yes">
+        <ExitCode Value="3010" Behavior="scheduleReboot" />
+      </ExePackage>
+      <ExePackage Id="VBCable" DisplayName="VB-CABLE virtual audio driver"
+                  Name="InstallVBCable.exe" SourceFile="$(var.Stage)\InstallDependencies.exe" InstallCommand="vbcable"
                   PerMachine="yes" Permanent="yes" Vital="yes" Compressed="yes">
         <ExitCode Value="3010" Behavior="scheduleReboot" />
       </ExePackage>
       <MsiPackage Id="Application" SourceFile="$(var.Stage)\MolovoxLabs.msi" Visible="no" Vital="yes" Compressed="yes">
         <MsiProperty Name="BUNDLEAPPROVED" Value="1" />
         <MsiProperty Name="INSTALLFOLDER" Value="[InstallFolder]" />
+        <MsiProperty Name="DESKTOPSHORTCUT" Value="[DesktopShortcut]" />
       </MsiPackage>
     </Chain>
   </Bundle>

@@ -7,6 +7,7 @@
     <Condition Message="Install Molovox Labs using its Setup executable.">Installed OR BUNDLEAPPROVED = "1"</Condition>
     <Property Id="BUNDLEAPPROVED" Secure="yes" />
     <Property Id="INSTALLFOLDER" Secure="yes" />
+    <Property Id="DESKTOPSHORTCUT" Secure="yes" />
 
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
@@ -20,23 +21,20 @@
           </Component>
         </Directory>
       </Directory>
-      <Directory Id="CommonFiles64Folder">
-        <Directory Id="RuntimeFolder" Name="Molovox Labs">
-          <Directory Id="MediaFolder" Name="Media">
-            <Component Id="MediaTools" Guid="D3609085-BF28-49E3-AD48-C4E7D1DA85F8" Win64="yes">
-              <RegistryValue Root="HKLM" Key="SOFTWARE\MolovoxLabs" Name="MediaInstalled" Type="integer" Value="1" KeyPath="yes" />
-              <RemoveFile Id="RemoveFFmpeg" Name="ffmpeg.exe" On="uninstall" />
-              <RemoveFile Id="RemoveFFprobe" Name="ffprobe.exe" On="uninstall" />
-              <RemoveFolder Id="RemoveMediaFolder" On="uninstall" />
-            </Component>
-          </Directory>
-        </Directory>
+      <Directory Id="DesktopFolder">
+        <Component Id="DesktopLink" Guid="BCAB9057-535C-460A-8DD7-735462EBB0D6" Win64="yes">
+          <Shortcut Id="MolovoxDesktopShortcut" Name="Molovox Labs" Target="[INSTALLFOLDER]MolovoxLabs.exe" WorkingDirectory="INSTALLFOLDER" />
+          <RegistryValue Root="HKCU" Key="SOFTWARE\MolovoxLabs" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
       </Directory>
       <Directory Id="ProgramMenuFolder" />
     </Directory>
     <Feature Id="Complete" Title="Molovox Labs" Level="1" Absent="disallow">
       <ComponentRef Id="Application" />
-      <ComponentRef Id="MediaTools" />
+      <Feature Id="DesktopLinkFeature" Title="Desktop shortcut" Level="1">
+        <Condition Level="0">DESKTOPSHORTCUT &lt;&gt; "1"</Condition>
+        <ComponentRef Id="DesktopLink" />
+      </Feature>
     </Feature>
   </Product>
 </Wix>

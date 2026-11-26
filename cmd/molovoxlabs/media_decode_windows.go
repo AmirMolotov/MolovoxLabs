@@ -36,7 +36,7 @@ type MediaInfo struct {
 
 func mediaTool(name string) (string, error) {
 	if common, err := windows.KnownFolderPath(windows.FOLDERID_ProgramFilesCommonX64, 0); err == nil {
-		for _, dir := range []string{"Media", ""} {
+		for _, dir := range []string{"Tools", "Media", ""} {
 			path := filepath.Join(common, "Molovox Labs", dir, name+".exe")
 			if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
 				return path, nil

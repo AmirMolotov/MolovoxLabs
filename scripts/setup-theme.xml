@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Theme xmlns="http://wixtoolset.org/schemas/thmutil/2010">
+  <Window Width="540" Height="460" HexStyle="100a0000" FontId="0">Molovox Labs Setup</Window>
+  <Font Id="0" Height="-13" Weight="400" Foreground="000000" Background="FFFFFF">Segoe UI</Font>
+  <Font Id="1" Height="-23" Weight="600" Foreground="000000">Segoe UI</Font>
+  <Text X="18" Y="16" Width="-18" Height="48" FontId="1" Visible="yes">Molovox Labs Setup</Text>
+
+  <Page Name="Install">
+    <Text X="18" Y="78" Width="-18" Height="20" FontId="0">Review the setup terms</Text>
+    <Richedit Name="EulaRichedit" X="18" Y="101" Width="-18" Height="181" FontId="0" TabStop="yes" HexStyle="0x800000" />
+    <Checkbox Name="EulaAcceptCheckbox" X="18" Y="292" Width="-18" Height="22" FontId="0" TabStop="yes">I accept the setup terms</Checkbox>
+    <Text X="18" Y="324" Width="-18" Height="19" FontId="0">Installation folder</Text>
+    <Editbox Name="InstallFolder" X="18" Y="347" Width="-117" Height="24" FontId="0" TabStop="yes" FileSystemAutoComplete="yes">[InstallFolder]</Editbox>
+    <Button Name="OptionsButton" X="-18" Y="346" Width="88" Height="26" FontId="0" TabStop="yes">Change…</Button>
+    <Checkbox Name="DesktopShortcut" X="18" Y="382" Width="-18" Height="22" FontId="0" TabStop="yes">Create a desktop shortcut</Checkbox>
+    <Button Name="InstallButton" X="-116" Y="-16" Width="88" Height="27" FontId="0" TabStop="yes">Install</Button>
+    <Button Name="WelcomeCancelButton" X="-18" Y="-16" Width="88" Height="27" FontId="0" TabStop="yes">Cancel</Button>
+  </Page>
+  <Page Name="Options">
+    <Text X="18" Y="92" Width="-18" Height="27" FontId="1">Choose the installation folder</Text>
+    <Editbox Name="FolderEditbox" X="18" Y="137" Width="-117" Height="24" FontId="0" TabStop="yes" FileSystemAutoComplete="yes" />
+    <Button Name="BrowseButton" X="-18" Y="136" Width="88" Height="26" FontId="0" TabStop="yes">Browse…</Button>
+    <Button Name="OptionsOkButton" X="-116" Y="-16" Width="88" Height="27" FontId="0" TabStop="yes">OK</Button>
+    <Button Name="OptionsCancelButton" X="-18" Y="-16" Width="88" Height="27" FontId="0" TabStop="yes">Cancel</Button>
+  </Page>
+  <Page Name="Progress">
+    <Text X="18" Y="92" Width="-18" Height="27" FontId="1">Installing</Text>
+    <Text Name="OverallProgressPackageText" X="18" Y="143" Width="-18" Height="25" FontId="0" DisablePrefix="yes" />
+    <Progressbar Name="OverallCalculatedProgressbar" X="18" Y="177" Width="-18" Height="16" />
+    <Button Name="ProgressCancelButton" X="-18" Y="-16" Width="88" Height="27" FontId="0" TabStop="yes">Cancel</Button>
+  </Page>
+  <Page Name="FilesInUse">
+    <Text X="18" Y="92" Width="-18" Height="27" FontId="1">Files are in use</Text>
+    <Text X="18" Y="130" Width="-18" Height="22" FontId="0">Setup needs to update files used by these applications.</Text>
+    <Text Name="FilesInUseText" X="18" Y="158" Width="-18" Height="165" FontId="0" HexStyle="0x0000000C" />
+    <Button Name="FilesInUseCloseRadioButton" X="18" Y="-88" Width="-18" Height="22" FontId="0" TabStop="yes" HexStyle="0x000009">Close the applications</Button>
+    <Button Name="FilesInUseDontCloseRadioButton" X="18" Y="-58" Width="-18" Height="22" FontId="0" TabStop="yes" HexStyle="0x000009">Leave the applications open</Button>
+    <Button Name="FilesInUseOkButton" X="-116" Y="-16" Width="88" Height="27" FontId="0" TabStop="yes">OK</Button>
+    <Button Name="FilesInUseCancelButton" X="-18" Y="-16" Width="88" Height="27" FontId="0" TabStop="yes">Cancel</Button>
+  </Page>
+  <Page Name="Modify">
+    <Text X="18" Y="92" Width="-18" Height="27" FontId="1">Repair or uninstall Molovox Labs</Text>
+    <Button Name="RepairButton" X="-214" Y="-16" Width="88" Height="27" FontId="0" TabStop="yes" HideWhenDisabled="yes">Repair</Button>
+    <Button Name="UninstallButton" X="-116" Y="-16" Width="88" Height="27" FontId="0" TabStop="yes">Uninstall</Button>
+    <Button Name="ModifyCancelButton" X="-18" Y="-16" Width="88" Height="27" FontId="0" TabStop="yes">Close</Button>
+  </Page>
+  <Page Name="Success">
+    <Text Name="SuccessHeader" X="18" Y="92" Width="-18" Height="27" FontId="1" HideWhenDisabled="yes">Setup complete</Text>
+    <Text Name="SuccessInstallHeader" X="18" Y="92" Width="-18" Height="27" FontId="1" HideWhenDisabled="yes">Molovox Labs is installed</Text>
+    <Text Name="SuccessRepairHeader" X="18" Y="92" Width="-18" Height="27" FontId="1" HideWhenDisabled="yes">Repair complete</Text>
+    <Text Name="SuccessUninstallHeader" X="18" Y="92" Width="-18" Height="27" FontId="1" HideWhenDisabled="yes">Molovox Labs was uninstalled</Text>
+    <Text Name="SuccessRestartText" X="18" Y="137" Width="-18" Height="30" FontId="0" HideWhenDisabled="yes">Restart Windows to finish setup.</Text>
+    <Button Name="SuccessRestartButton" X="-116" Y="-16" Width="88" Height="27" FontId="0" TabStop="yes" HideWhenDisabled="yes">Restart</Button>
+    <Button Name="SuccessCancelButton" X="-18" Y="-16" Width="88" Height="27" FontId="0" TabStop="yes">Close</Button>
+  </Page>
+  <Page Name="Failure">
+    <Text Name="FailureHeader" X="18" Y="92" Width="-18" Height="27" FontId="1">Setup could not complete</Text>
+    <Hypertext Name="FailureLogFileLink" X="18" Y="133" Width="-18" Height="23" FontId="0" TabStop="yes" HideWhenDisabled="yes">#(loc.FailureHyperlinkLogText)</Hypertext>
+    <Hypertext Name="FailureMessageText" X="18" Y="165" Width="-18" Height="88" FontId="0" HideWhenDisabled="yes" />
+    <Text Name="FailureRestartText" X="18" Y="267" Width="-18" Height="30" FontId="0" HideWhenDisabled="yes">Restart Windows before trying again.</Text>
+    <Button Name="FailureRestartButton" X="-116" Y="-16" Width="88" Height="27" FontId="0" TabStop="yes" HideWhenDisabled="yes">Restart</Button>
+    <Button Name="FailureCloseButton" X="-18" Y="-16" Width="88" Height="27" FontId="0" TabStop="yes">Close</Button>
+  </Page>
+  <Page Name="Help">
+    <Text X="18" Y="92" Width="-18" Height="27" FontId="1">#(loc.HelpHeader)</Text>
+    <Text X="18" Y="133" Width="-18" Height="238" FontId="0">#(loc.HelpText)</Text>
+    <Button Name="HelpCancelButton" X="-18" Y="-16" Width="88" Height="27" FontId="0" TabStop="yes">Close</Button>
+  </Page>
+</Theme>

@@ -18,6 +18,14 @@ import (
 var script string
 
 func main() {
+	if len(os.Args) != 2 {
+		os.Exit(1)
+	}
+	switch os.Args[1] {
+	case "ffmpeg", "webview2", "vbcable":
+	default:
+		os.Exit(1)
+	}
 	system, err := windows.GetSystemDirectory()
 	if err != nil {
 		os.Exit(1)
@@ -30,7 +38,7 @@ func main() {
 	cmd := exec.Command(powershell, "-NoLogo", "-NoProfile", "-NonInteractive",
 		"-EncodedCommand", base64.StdEncoding.EncodeToString(command))
 	// The elevated setup uses Windows PowerShell's own modules even when launched from PowerShell 7.
-	cmd.Env = append(cmd.Environ(), "PSModulePath="+filepath.Join(filepath.Dir(powershell), "Modules"))
+	cmd.Env = append(cmd.Environ(), "PSModulePath="+filepath.Join(filepath.Dir(powershell), "Modules"), "MOLOVOX_PREREQUISITE="+os.Args[1])
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	if err := cmd.Run(); err != nil {
 		var exit *exec.ExitError
